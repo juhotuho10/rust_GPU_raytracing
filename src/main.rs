@@ -144,16 +144,18 @@ fn generate_pixels(
 //) -> Vec<u8> {
 //    // Generate a seed from the original RNG
 //    let seed: [u8; 32] = rng.gen();
-//    let index = rng.gen_bool(0.5) as usize;
 //
 //    let pixel_colors: Vec<u8> = (0..size.height)
 //        .into_par_iter()
-//        .flat_map_iter(|i| {
-//            let mut local_rng: SmallRng = SmallRng::seed_from_u64(seed[index] as u64 + i as u64);
-//            let mut pixel_colors: Vec<u8> = Vec::with_capacity((size.width * 4) as usize);
-//            // Create a new RNG for each thread using the seed
+//        .flat_map_iter(|y| {
+//            // Derive a row-specific seed to ensure deterministic but varied results per row
+//            let mut row_seed = seed;
+//            row_seed[0] = row_seed[0].wrapping_add(y as u8); // Simple mutation of the seed based on row index
 //
-//            for _ in 0..size.width {
+//            let mut local_rng = SmallRng::from_seed(row_seed);
+//            let mut pixel_colors: Vec<u8> = Vec::with_capacity((size.width * 4) as usize);
+//
+//            for x in 0..size.width {
 //                let color: [u8; 4] = if local_rng.gen_bool(0.5) {
 //                    [255, 255, 255, 255]
 //                } else {
