@@ -11,6 +11,10 @@ use winit::{
     window::Window,
 };
 
+use egui_wgpu_backend::{RenderPass as EguiRenderPass, ScreenDescriptor};
+use egui_winit_platform::{Platform, PlatformDescriptor};
+use wgpu::util::DeviceExt;
+
 pub fn main() {
     let event_loop = EventLoop::new().unwrap();
 
@@ -44,8 +48,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let mut bind_group = create_device_bindgroup(&device, &bind_group_layout, &texture, &sampler);
 
-    /* ##################################################################### */
-
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
         bind_group_layouts: &[&bind_group_layout],
@@ -63,6 +65,21 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let window = &window;
 
+    /* ################################ EGUI CODE ##################################### */
+    // Initialize egui
+    let scale_factor = window.scale_factor();
+
+    let mut platform = Platform::new(PlatformDescriptor {
+        physical_width: size.width,
+        physical_height: size.height,
+        scale_factor,
+        font_definitions: Default::default(),
+        style: Default::default(),
+    });
+    let mut egui_rpass = EguiRenderPass::new(&device, config.format, 1);
+
+    /* ##############################################3################################# */
+
     event_loop
         .run(move |event, target| {
             // Have the closure take ownership of the resources.
@@ -70,6 +87,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
             // the resources are properly cleaned up.
 
             let _ = (&instance, &pipeline_layout);
+
+            platform.handle_event(&event);
 
             window.request_redraw();
 
@@ -90,6 +109,11 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                         texture = create_texture(&device, size);
 
+                        /* ################################ EGUI CODE ##################################### */
+                        // Egui resize
+
+                        /* ##############################################3################################# */
+
                         bind_group = create_device_bindgroup(
                             &device,
                             &bind_group_layout,
@@ -105,10 +129,107 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     WindowEvent::RedrawRequested => {
                         let pixel_colors = generate_pixels(&device, size, &mut rng);
 
+                        
+
+                        /* ################################ temp, delete ##################################### */
+
+                        let frame: wgpu::SurfaceTexture = surface
+                        .get_current_texture()
+                        .expect("Failed to acquire next swap chain texture");
+                        let view = frame
+                            .texture
+                            .create_view(&wgpu::TextureViewDescriptor::default());
+                        let mut encoder =
+                            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+                        /* ##############################################3################################# */
+
+
+                        /* ################################ EGUI CODE ##################################### */
+
+                        
+
+                        /* ##############################################3################################# */
+
+
                         update_render_queue(&queue, &texture, size, &pixel_colors);
 
-                        renderpass(&device, &surface, &render_pipeline, &bind_group, &queue);
+                       
+
+                        {
+                            let mut rpass: wgpu::RenderPass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                                label: None,
+                                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                    view: &view,
+                                    resolve_target: None,
+                                    ops: wgpu::Operations {
+                                        load: wgpu::LoadOp::Load,
+                                        store: wgpu::StoreOp::Store,
+                                    },
+                                })],
+                                depth_stencil_attachment: None,
+                                timestamp_writes: None,
+                                occlusion_query_set: None,
+                            });
+                            rpass.set_pipeline(&render_pipeline);
+                            rpass.set_bind_group(0, &bind_group, &[]);
+                            rpass.draw(0..6, 0..1);
+                        }
+
+                        
+                        
+
+
+
+                        /* ################################ EGUI CODE ##################################### */
+                        // Egui render
+
+                        platform.begin_frame();
+
+                        // Use egui to build your UI here
+                        egui::CentralPanel::default().show(&platform.context(), |ui| {
+                            ui.label("Hello, world!");
+                        });
+
+                        let full_output = platform.end_frame(Some(window));
+                        let paint_jobs = platform.context().tessellate(full_output.shapes, 1.);
+
+                        let screen_descriptor = ScreenDescriptor {
+                            physical_width: size.width,
+                            physical_height: size.height,
+                            scale_factor: scale_factor as f32,
+                        };
+                        let egui_texture = full_output.textures_delta;
+                        
+                        
+                        egui_rpass.add_textures(
+                            &device,
+                            &queue,
+                            &egui_texture,
+                        ).expect("couldnt add textures");
+
+     
+                        egui_rpass.update_buffers(&device, &queue, &paint_jobs, &screen_descriptor);
+                        
+                    
+                        
+                        egui_rpass.execute(
+                        &mut encoder,
+                        &view,
+                        &paint_jobs,
+                        &screen_descriptor,
+                        None,
+                        ).unwrap();
+
+                        
+
+                        // #################### EGUI ##########################################
+                        queue.submit(Some(encoder.finish()));
+                        frame.present();
+
+                        //renderpass(&device, &surface, &render_pipeline, &bind_group, &queue);
                     }
+                 
                     WindowEvent::CloseRequested => target.exit(),
                     _ => {}
                 };
@@ -246,6 +367,8 @@ fn renderpass(
     render_pipeline: &wgpu::RenderPipeline,
     bind_group: &BindGroup,
     queue: &wgpu::Queue,
+    //EGUI
+    
 ) {
     let frame: wgpu::SurfaceTexture = surface
         .get_current_texture()
@@ -276,6 +399,19 @@ fn renderpass(
         rpass.draw(0..6, 0..1);
     }
 
+
+
+    // #################### EGUI ##########################################
+    {
+
+
+
+
+
+
+    }
+
+    // #################### EGUI ##########################################
     queue.submit(Some(encoder.finish()));
     frame.present();
 }
