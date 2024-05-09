@@ -16,9 +16,3 @@ Cargo.lock
 # Vscode stuff
 .vscode/
 .vs/
-
-# python test file
-*.py
-
-# rust test file
-main.rs
