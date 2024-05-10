@@ -1,6 +1,6 @@
 use egui::{Frame, FullOutput};
 use rand::{thread_rng, Rng};
-use rayon::prelude::*;
+use rayon::{prelude::*, ThreadPoolBuilder};
 use std::borrow::Cow;
 use wgpu::{
     Adapter, BindGroup, Device, PipelineLayout, Queue, Surface, TextureDescriptor,
@@ -32,6 +32,14 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut rng = rand::thread_rng();
 
     let mut right_click_pressed = false;
+
+    let available_threads = rayon::current_num_threads();
+    let used_threads = available_threads / 2;
+
+    let thread_pool = ThreadPoolBuilder::new()
+        .num_threads(used_threads)
+        .build()
+        .unwrap();
 
     let mut size = window.inner_size();
     size.width = size.width.max(1);
@@ -145,7 +153,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     }
 
                     WindowEvent::RedrawRequested => {
-                        let pixel_colors = generate_pixels(&device, &size, &mut rng);
+                        let pixel_colors = generate_pixels(&device, &size, &mut rng, &thread_pool);
 
                         update_render_queue(&queue, &texture, &size, &pixel_colors);
 
@@ -237,20 +245,15 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 //) -> Vec<u8> {
 //    let mut pixel_colors: Vec<u8> = Vec::with_capacity((size.width * size.height * 4) as usize);
 //    for y in 0..size.height {
+//        let y: f32 = y as f32 / size.height as f32 * 2. - 1.;
+//
 //        for x in 0..size.width {
+//            // normalizing x between -1 and 1
+//            let x = x as f32 / size.width as f32 * 2. - 1.;
+//
 //            let color = per_pixel(x, y);
 //
 //            let color_rgba = to_rgba(color);
-//
-//            let mut sum = 0;
-//            for i in color_rgba {
-//                sum += i as i32;
-//            }
-//
-//            if sum > 255 {
-//                println!("success: {:?}", color_rgba);
-//            }
-//
 //            pixel_colors.extend_from_slice(&color_rgba);
 //        }
 //    }
@@ -262,30 +265,33 @@ fn generate_pixels(
     device: &wgpu::Device,
     size: &winit::dpi::PhysicalSize<u32>,
     rng: &mut rand::rngs::ThreadRng,
+    thread_pool: &rayon::ThreadPool,
 ) -> Vec<u8> {
-    let pixel_colors: Vec<u8> = (0..size.height)
-        .into_par_iter()
-        .flat_map_iter(|y| {
-            //let mut local_rng = thread_rng();
-            let mut row_colors: Vec<u8> = Vec::with_capacity((size.width * 4) as usize);
+    let mut pixel_colors: Vec<u8> = Vec::with_capacity((size.width * size.height) as usize * 4);
+    thread_pool.install(|| {
+        pixel_colors = (0..size.height)
+            .into_par_iter()
+            .flat_map_iter(|y| {
+                //let mut local_rng = thread_rng();
+                let mut row_colors: Vec<u8> = Vec::with_capacity((size.width * 4) as usize);
 
-            // normalizing y between -1 and 1
-            let y: f32 = y as f32 / size.height as f32 * 2. - 1.;
+                // normalizing y between -1 and 1
+                let y: f32 = y as f32 / size.height as f32 * 2. - 1.;
 
-            for x in 0..size.width {
-                // normalizing x between -1 and 1
-                let x = x as f32 / size.width as f32 * 2. - 1.;
+                for x in 0..size.width {
+                    // normalizing x between -1 and 1
+                    let x = x as f32 / size.width as f32 * 2. - 1.;
 
-                let color = per_pixel(x, y);
+                    let color = per_pixel(x, y);
 
-                let color_rgba = to_rgba(color);
+                    let color_rgba = to_rgba(color);
 
-                row_colors.extend_from_slice(&color_rgba);
-            }
-            row_colors.into_iter()
-        })
-        .collect();
-
+                    row_colors.extend_from_slice(&color_rgba);
+                }
+                row_colors.into_iter()
+            })
+            .collect();
+    });
     pixel_colors
 }
 
