@@ -1,15 +1,14 @@
-use egui::{ClippedPrimitive, FullOutput};
+use egui::{Frame, FullOutput};
 use rand::Rng;
 use rayon::prelude::*;
 use std::borrow::Cow;
 use wgpu::{
-    hal::empty::Encoder, Adapter, BindGroup, Device, PipelineLayout, Queue, Surface,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
+    Adapter, BindGroup, Device, PipelineLayout, Queue, Surface, TextureDescriptor,
+    TextureDimension, TextureFormat, TextureUsages,
 };
 use winit::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
-    platform,
     window::Window,
 };
 
@@ -86,12 +85,13 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     //// Modify egui styles for transparency
     //let mut style: egui::Style = (*platform.context().style()).clone();
-    //style.visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgba_premultiplied(27, 27, 27, 25); // Slight grey, low alpha
+    //style.visuals.widgets.noninteractive.bg_fill =
+    //    egui::Color32::from_rgba_premultiplied(27, 27, 27, 25); // Slight grey, low alpha
     //style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgba_premultiplied(27, 27, 27, 25); // Apply same for inactive widgets if needed
     //style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgba_premultiplied(27, 27, 27, 50); // Darker when hovered
     //style.visuals.widgets.active.bg_fill = egui::Color32::from_rgba_premultiplied(27, 27, 27, 75); // Even darker when active
     //platform.context().set_style(style);
-    //
+
     let mut egui_rpass = EguiRenderPass::new(&device, config.format, 1);
 
     /* ##############################################3################################# */
@@ -141,9 +141,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     }
 
                     WindowEvent::RedrawRequested => {
-                        let pixel_colors = generate_pixels(&device, size, &mut rng);
+                        let pixel_colors = generate_pixels(&device, &size, &mut rng);
 
-                        update_render_queue(&queue, &texture, size, &pixel_colors);
+                        update_render_queue(&queue, &texture, &size, &pixel_colors);
 
                         let frame: wgpu::SurfaceTexture = surface
                             .get_current_texture()
@@ -182,7 +182,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             .execute(&mut encoder, &view, &paint_jobs, &screen_descriptor, None)
                             .unwrap();
 
-                        // ######### Adding egui renderpass to the encoder ###########
+                        // ######### rendering the queue ###########
                         queue.submit(Some(encoder.finish()));
                         frame.present();
                     }
@@ -198,7 +198,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 #[allow(unused_variables)]
 fn generate_pixels(
     device: &wgpu::Device,
-    size: winit::dpi::PhysicalSize<u32>,
+    size: &winit::dpi::PhysicalSize<u32>,
     rng: &mut rand::rngs::ThreadRng,
 ) -> Vec<u8> {
     let mut pixel_colors: Vec<u8> = Vec::with_capacity((size.width * size.height * 4) as usize);
@@ -251,7 +251,7 @@ fn generate_pixels(
 fn update_render_queue(
     queue: &wgpu::Queue,
     texture: &wgpu::Texture,
-    size: winit::dpi::PhysicalSize<u32>,
+    size: &winit::dpi::PhysicalSize<u32>,
     pixel_colors: &[u8],
 ) {
     queue.write_texture(
@@ -448,12 +448,23 @@ fn generate_sampler(device: &wgpu::Device) -> wgpu::Sampler {
 fn create_ui(window: &Window, platform: &mut Platform) -> FullOutput {
     platform.begin_frame();
 
+    let transparent_frame = Frame::none().fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200));
     egui::SidePanel::right("side_panel")
         .resizable(false)
+        .frame(transparent_frame)
         .show(&platform.context(), |ui| {
             ui.heading("Hello, world!");
             ui.label("This panel is on the right side.");
-            // Add more UI elements here as needed
+
+            ui.vertical_centered(|ui| {
+                if ui.button("Hello").clicked() {
+                    println!("Hello");
+                }
+
+                ui.add_space(5.0);
+
+                ui.checkbox(&mut false, "clickme");
+            });
         });
 
     platform.end_frame(Some(window))
