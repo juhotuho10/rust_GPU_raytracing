@@ -2,8 +2,7 @@ use rand::{rngs::SmallRng, Rng, SeedableRng};
 use rayon::prelude::*;
 use std::borrow::Cow;
 use wgpu::{
-    Adapter, BindGroup, Device, PipelineLayout, Queue, Surface, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages,
+    Adapter, BindGroup, Color, Device, PipelineLayout, Queue, Surface, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages
 };
 use winit::{
     event::{Event, WindowEvent},
@@ -76,6 +75,15 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         font_definitions: Default::default(),
         style: Default::default(),
     });
+
+    //// Modify egui styles for transparency
+    //let mut style: egui::Style = (*platform.context().style()).clone();
+    //style.visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgba_premultiplied(27, 27, 27, 25); // Slight grey, low alpha
+    //style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgba_premultiplied(27, 27, 27, 25); // Apply same for inactive widgets if needed
+    //style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgba_premultiplied(27, 27, 27, 50); // Darker when hovered
+    //style.visuals.widgets.active.bg_fill = egui::Color32::from_rgba_premultiplied(27, 27, 27, 75); // Even darker when active
+    //platform.context().set_style(style);
+    //
     let mut egui_rpass = EguiRenderPass::new(&device, config.format, 1);
 
     /* ##############################################3################################# */
@@ -133,14 +141,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                         /* ################################ temp, delete ##################################### */
 
-                        let frame: wgpu::SurfaceTexture = surface
-                        .get_current_texture()
-                        .expect("Failed to acquire next swap chain texture");
-                        let view = frame
-                            .texture
-                            .create_view(&wgpu::TextureViewDescriptor::default());
-                        let mut encoder =
-                            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+                        let frame: wgpu::SurfaceTexture = surface.get_current_texture().expect("Failed to acquire next swap chain texture");
+                        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
                         /* ##############################################3################################# */
 
@@ -187,26 +190,38 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                         platform.begin_frame();
 
                         // Use egui to build your UI here
-                        egui::CentralPanel::default().show(&platform.context(), |ui| {
-                            ui.label("Hello, world!");
+                        //egui::CentralPanel::default().show(&platform.context(), |ui| {
+                        //    ui.label("Hello, world!");
+                        //});
+
+                        
+
+                        egui::SidePanel::right("side_panel").resizable(false).show(&platform.context(), |ui| {
+                            ui.heading("Hello, world!");
+                            ui.label("This panel is on the right side.");
+                            // Add more UI elements here as needed
                         });
 
+                        
+
                         let full_output = platform.end_frame(Some(window));
-                        let paint_jobs = platform.context().tessellate(full_output.shapes, 1.);
+                        let paint_jobs = platform.context().tessellate(full_output.shapes, full_output.pixels_per_point);
 
                         let screen_descriptor = ScreenDescriptor {
                             physical_width: size.width,
                             physical_height: size.height,
                             scale_factor: scale_factor as f32,
                         };
-                        let egui_texture = full_output.textures_delta;
-                        
+
+
                         
                         egui_rpass.add_textures(
                             &device,
                             &queue,
-                            &egui_texture,
+                            &full_output.textures_delta,
                         ).expect("couldnt add textures");
+
+                        
 
      
                         egui_rpass.update_buffers(&device, &queue, &paint_jobs, &screen_descriptor);
