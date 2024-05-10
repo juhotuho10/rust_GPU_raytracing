@@ -1,18 +1,20 @@
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use egui::{ClippedPrimitive, FullOutput};
+use rand::Rng;
 use rayon::prelude::*;
 use std::borrow::Cow;
 use wgpu::{
-    Adapter, BindGroup, Color, Device, PipelineLayout, Queue, Surface, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages
+    hal::empty::Encoder, Adapter, BindGroup, Device, PipelineLayout, Queue, Surface,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
 use winit::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
+    platform,
     window::Window,
 };
 
 use egui_wgpu_backend::{RenderPass as EguiRenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
-use wgpu::util::DeviceExt;
 
 pub fn main() {
     let event_loop = EventLoop::new().unwrap();
@@ -76,6 +78,12 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         style: Default::default(),
     });
 
+    let mut screen_descriptor = ScreenDescriptor {
+        physical_width: size.width,
+        physical_height: size.height,
+        scale_factor: scale_factor as f32,
+    };
+
     //// Modify egui styles for transparency
     //let mut style: egui::Style = (*platform.context().style()).clone();
     //style.visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgba_premultiplied(27, 27, 27, 25); // Slight grey, low alpha
@@ -117,17 +125,15 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                         texture = create_texture(&device, size);
 
-                        /* ################################ EGUI CODE ##################################### */
-                        // Egui resize
-
-                        /* ##############################################3################################# */
-
                         bind_group = create_device_bindgroup(
                             &device,
                             &bind_group_layout,
                             &texture,
                             &sampler,
                         );
+
+                        screen_descriptor.physical_height = size.height;
+                        screen_descriptor.physical_width = size.width;
 
                         surface.configure(&device, &config);
                         // On macos the window needs to be redrawn manually after resizing
@@ -137,114 +143,50 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     WindowEvent::RedrawRequested => {
                         let pixel_colors = generate_pixels(&device, size, &mut rng);
 
-                        
-
-                        /* ################################ temp, delete ##################################### */
-
-                        let frame: wgpu::SurfaceTexture = surface.get_current_texture().expect("Failed to acquire next swap chain texture");
-                        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
-                        /* ##############################################3################################# */
-
-
-                        /* ################################ EGUI CODE ##################################### */
-
-                        
-
-                        /* ##############################################3################################# */
-
-
                         update_render_queue(&queue, &texture, size, &pixel_colors);
 
-                       
+                        let frame: wgpu::SurfaceTexture = surface
+                            .get_current_texture()
+                            .expect("Failed to acquire next swap chain texture");
 
-                        {
-                            let mut rpass: wgpu::RenderPass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        let view: wgpu::TextureView = frame
+                            .texture
+                            .create_view(&wgpu::TextureViewDescriptor::default());
+
+                        let mut encoder: wgpu::CommandEncoder =
+                            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                                 label: None,
-                                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                                    view: &view,
-                                    resolve_target: None,
-                                    ops: wgpu::Operations {
-                                        load: wgpu::LoadOp::Load,
-                                        store: wgpu::StoreOp::Store,
-                                    },
-                                })],
-                                depth_stencil_attachment: None,
-                                timestamp_writes: None,
-                                occlusion_query_set: None,
                             });
-                            rpass.set_pipeline(&render_pipeline);
-                            rpass.set_bind_group(0, &bind_group, &[]);
-                            rpass.draw(0..6, 0..1);
-                        }
 
-                        
-                        
+                        add_renderpass_to_encode(
+                            &mut encoder,
+                            &view,
+                            &render_pipeline,
+                            &bind_group,
+                        );
 
+                        let full_output = create_ui(window, &mut platform);
 
+                        let paint_jobs = platform
+                            .context()
+                            .tessellate(full_output.shapes, full_output.pixels_per_point);
 
-                        /* ################################ EGUI CODE ##################################### */
-                        // Egui render
+                        // ######### Adding egui renderpass to the encoder ###########
+                        egui_rpass
+                            .add_textures(&device, &queue, &full_output.textures_delta)
+                            .expect("couldnt add textures");
 
-                        platform.begin_frame();
-
-                        // Use egui to build your UI here
-                        //egui::CentralPanel::default().show(&platform.context(), |ui| {
-                        //    ui.label("Hello, world!");
-                        //});
-
-                        
-
-                        egui::SidePanel::right("side_panel").resizable(false).show(&platform.context(), |ui| {
-                            ui.heading("Hello, world!");
-                            ui.label("This panel is on the right side.");
-                            // Add more UI elements here as needed
-                        });
-
-                        
-
-                        let full_output = platform.end_frame(Some(window));
-                        let paint_jobs = platform.context().tessellate(full_output.shapes, full_output.pixels_per_point);
-
-                        let screen_descriptor = ScreenDescriptor {
-                            physical_width: size.width,
-                            physical_height: size.height,
-                            scale_factor: scale_factor as f32,
-                        };
-
-
-                        
-                        egui_rpass.add_textures(
-                            &device,
-                            &queue,
-                            &full_output.textures_delta,
-                        ).expect("couldnt add textures");
-
-                        
-
-     
                         egui_rpass.update_buffers(&device, &queue, &paint_jobs, &screen_descriptor);
-                        
-                    
-                        
-                        egui_rpass.execute(
-                        &mut encoder,
-                        &view,
-                        &paint_jobs,
-                        &screen_descriptor,
-                        None,
-                        ).unwrap();
 
-                        
+                        egui_rpass
+                            .execute(&mut encoder, &view, &paint_jobs, &screen_descriptor, None)
+                            .unwrap();
 
-                        // #################### EGUI ##########################################
+                        // ######### Adding egui renderpass to the encoder ###########
                         queue.submit(Some(encoder.finish()));
                         frame.present();
-
-                        //renderpass(&device, &surface, &render_pipeline, &bind_group, &queue);
                     }
-                 
+
                     WindowEvent::CloseRequested => target.exit(),
                     _ => {}
                 };
@@ -376,59 +318,29 @@ fn create_device_bindgroup(
     })
 }
 
-fn renderpass(
-    device: &wgpu::Device,
-    surface: &Surface,
+fn add_renderpass_to_encode(
+    encoder: &mut wgpu::CommandEncoder,
+    view: &wgpu::TextureView,
     render_pipeline: &wgpu::RenderPipeline,
     bind_group: &BindGroup,
-    queue: &wgpu::Queue,
-    //EGUI
-    
 ) {
-    let frame: wgpu::SurfaceTexture = surface
-        .get_current_texture()
-        .expect("Failed to acquire next swap chain texture");
-    let view = frame
-        .texture
-        .create_view(&wgpu::TextureViewDescriptor::default());
-    let mut encoder =
-        device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
-    {
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: None,
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-        });
-        rpass.set_pipeline(render_pipeline);
-        rpass.set_bind_group(0, bind_group, &[]);
-        rpass.draw(0..6, 0..1);
-    }
-
-
-
-    // #################### EGUI ##########################################
-    {
-
-
-
-
-
-
-    }
-
-    // #################### EGUI ##########################################
-    queue.submit(Some(encoder.finish()));
-    frame.present();
+    let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: None,
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Load,
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+    });
+    rpass.set_pipeline(render_pipeline);
+    rpass.set_bind_group(0, bind_group, &[]);
+    rpass.draw(0..6, 0..1);
 }
 
 fn generate_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
@@ -531,4 +443,18 @@ fn generate_sampler(device: &wgpu::Device) -> wgpu::Sampler {
         mipmap_filter: wgpu::FilterMode::Nearest,
         ..Default::default()
     })
+}
+
+fn create_ui(window: &Window, platform: &mut Platform) -> FullOutput {
+    platform.begin_frame();
+
+    egui::SidePanel::right("side_panel")
+        .resizable(false)
+        .show(&platform.context(), |ui| {
+            ui.heading("Hello, world!");
+            ui.label("This panel is on the right side.");
+            // Add more UI elements here as needed
+        });
+
+    platform.end_frame(Some(window))
 }
