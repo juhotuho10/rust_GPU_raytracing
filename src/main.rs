@@ -8,14 +8,14 @@ use wgpu::{
 };
 use winit::{
     dpi::PhysicalPosition,
-    event::{self, ElementState, Event, MouseButton, WindowEvent},
+    event::{ElementState, Event, MouseButton, WindowEvent},
     event_loop::EventLoop,
     window::{CursorGrabMode, Window},
 };
 
 use egui_wgpu_backend::{RenderPass as EguiRenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
-use glam;
+use glam::{vec3a, Vec3A};
 
 pub fn main() {
     let event_loop = EventLoop::new().unwrap();
@@ -238,12 +238,20 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 //    let mut pixel_colors: Vec<u8> = Vec::with_capacity((size.width * size.height * 4) as usize);
 //    for y in 0..size.height {
 //        for x in 0..size.width {
-//            let color: [u8; 4] = if rng.gen_bool(0.5) {
-//                [255, 255, 255, 255]
-//            } else {
-//                [0, 0, 0, 255]
-//            };
-//            pixel_colors.extend_from_slice(&color);
+//            let color = per_pixel(x, y);
+//
+//            let color_rgba = to_rgba(color);
+//
+//            let mut sum = 0;
+//            for i in color_rgba {
+//                sum += i as i32;
+//            }
+//
+//            if sum > 255 {
+//                println!("success: {:?}", color_rgba);
+//            }
+//
+//            pixel_colors.extend_from_slice(&color_rgba);
 //        }
 //    }
 //    pixel_colors
@@ -255,16 +263,20 @@ fn generate_pixels(
     size: &winit::dpi::PhysicalSize<u32>,
     rng: &mut rand::rngs::ThreadRng,
 ) -> Vec<u8> {
-    // Generate a seed from the original RNG
-
     let pixel_colors: Vec<u8> = (0..size.height)
         .into_par_iter()
         .flat_map_iter(|y| {
             //let mut local_rng = thread_rng();
             let mut row_colors: Vec<u8> = Vec::with_capacity((size.width * 4) as usize);
 
-            for _ in 0..size.width {
-                let color = per_pixel();
+            // normalizing y between -1 and 1
+            let y: f32 = y as f32 / size.height as f32 * 2. - 1.;
+
+            for x in 0..size.width {
+                // normalizing x between -1 and 1
+                let x = x as f32 / size.width as f32 * 2. - 1.;
+
+                let color = per_pixel(x, y);
 
                 let color_rgba = to_rgba(color);
 
@@ -499,11 +511,48 @@ fn create_ui(window: &Window, platform: &mut Platform) -> FullOutput {
     platform.end_frame(Some(window))
 }
 
-fn per_pixel() -> glam::Vec3A {
-    glam::vec3a(0.0, 0.0, 0.0)
+fn per_pixel(x: f32, y: f32) -> Vec3A {
+    // (bx^2 + by^2)t^2 + 2*(axbx + ayby)t + (ax^2 + by^2 - r^2) = 0
+    // where
+    // a = ray origin
+    // b = ray direction
+    // r = sphere radius
+    // t = hit distance
+
+    let ray_origin = vec3a(0., 0., -1.);
+    let ray_direction = vec3a(x, y, -1.);
+    let sphere_origin = vec3a(0., 0., 0.);
+    let light_direction = vec3a(-1., -1., -1.).normalize();
+    let radius: f32 = 0.5;
+
+    let a: f32 = ray_direction.dot(ray_direction);
+    let b: f32 = 2.0 * ray_direction.dot(ray_origin);
+    let c: f32 = ray_origin.dot(ray_origin) - (radius * radius);
+
+    // discriminant:
+    // b^2 - 4*a*c
+    let discriminant = b * b - 4. * a * c;
+
+    if discriminant < 0. {
+        // we missed the sphere
+        return Vec3A::splat(0.);
+    }
+    // (-b +- discriminant) / 2a
+    //let t0 = (-b + discriminant.sqrt()) / (2. * a);
+    let closest_t = (-b - discriminant.sqrt()) / (2. * a);
+
+    let hit_point = ray_origin + ray_direction * closest_t;
+
+    let sphere_normal = (hit_point - sphere_origin).normalize();
+
+    // cosine of the angle between hitpoin and the light direction
+    // min light intenstiy is 0
+    let light_intensity = sphere_normal.dot(-light_direction).max(0.05);
+
+    vec3a(1., 0., 1.) * light_intensity
 }
 
-fn to_rgba(mut vector: glam::Vec3A) -> [u8; 4] {
+fn to_rgba(mut vector: Vec3A) -> [u8; 4] {
     vector *= 255.0;
     [vector.x as u8, vector.y as u8, vector.z as u8, 255]
 }
