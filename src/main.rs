@@ -7,9 +7,10 @@ use wgpu::{
     TextureDimension, TextureFormat, TextureUsages,
 };
 use winit::{
-    event::{Event, WindowEvent},
+    dpi::PhysicalPosition,
+    event::{self, ElementState, Event, MouseButton, WindowEvent},
     event_loop::EventLoop,
-    window::Window,
+    window::{CursorGrabMode, Window},
 };
 
 use egui_wgpu_backend::{RenderPass as EguiRenderPass, ScreenDescriptor};
@@ -28,6 +29,8 @@ pub fn main() {
 
 async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut rng = rand::thread_rng();
+
+    let mut right_click_pressed = false;
 
     let mut size = window.inner_size();
     size.width = size.width.max(1);
@@ -188,8 +191,38 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     }
 
                     WindowEvent::CloseRequested => target.exit(),
+
+                    WindowEvent::MouseInput {
+                        state,
+                        button: MouseButton::Right,
+                        device_id: _,
+                    } => match state {
+                        ElementState::Pressed => {
+                            right_click_pressed = true;
+                            window
+                                .set_cursor_grab(CursorGrabMode::Confined)
+                                .expect("couldn't confine cursor");
+
+                            println!("cursor grabbed");
+                        }
+                        ElementState::Released => {
+                            right_click_pressed = false;
+                            window
+                                .set_cursor_grab(CursorGrabMode::None)
+                                .expect("Failed to release cursor");
+                            window.set_cursor_visible(true);
+                            println!("cursor released");
+                        }
+                    },
                     _ => {}
                 };
+            }
+
+            if right_click_pressed {
+                window
+                    .set_cursor_position(PhysicalPosition::new(400, 200))
+                    .expect("couldn't set cursor pos");
+                window.set_cursor_visible(false);
             }
         })
         .unwrap();
