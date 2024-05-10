@@ -1,4 +1,4 @@
-use egui::{Frame, FullOutput};
+use egui::{pos2, Frame, FullOutput};
 use rand::{thread_rng, Rng};
 use rayon::{prelude::*, ThreadPoolBuilder};
 use std::borrow::Cow;
@@ -95,15 +95,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         scale_factor: scale_factor as f32,
     };
 
-    //// Modify egui styles for transparency
-    //let mut style: egui::Style = (*platform.context().style()).clone();
-    //style.visuals.widgets.noninteractive.bg_fill =
-    //    egui::Color32::from_rgba_premultiplied(27, 27, 27, 25); // Slight grey, low alpha
-    //style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgba_premultiplied(27, 27, 27, 25); // Apply same for inactive widgets if needed
-    //style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgba_premultiplied(27, 27, 27, 50); // Darker when hovered
-    //style.visuals.widgets.active.bg_fill = egui::Color32::from_rgba_premultiplied(27, 27, 27, 75); // Even darker when active
-    //platform.context().set_style(style);
-
     let mut egui_rpass = EguiRenderPass::new(&device, config.format, 1);
 
     /* ##############################################3################################# */
@@ -149,14 +140,38 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                         surface.configure(&device, &config);
                         // On macos the window needs to be redrawn manually after resizing
+
                         window.request_redraw();
                     }
 
-                    WindowEvent::RedrawRequested => {
-                        let pixel_colors = generate_pixels(&device, &size, &mut rng, &thread_pool);
+                    WindowEvent::CloseRequested => target.exit(),
 
-                        update_render_queue(&queue, &texture, &size, &pixel_colors);
+                    WindowEvent::MouseInput {
+                        state,
+                        button: MouseButton::Right,
+                        device_id: _,
+                    } => match state {
+                        ElementState::Pressed => {
+                            //right_click_pressed = true;
 
+                            window
+                                .set_cursor_grab(CursorGrabMode::Confined)
+                                .expect("couldn't confine cursor");
+                            window.set_cursor_visible(false);
+                            println!("cursor grabbed");
+                        }
+                        ElementState::Released => {
+                            //right_click_pressed = false;
+                            window
+                                .set_cursor_grab(CursorGrabMode::None)
+                                .expect("Failed to release cursor");
+                            window.set_cursor_visible(true);
+                            println!("cursor released");
+                        }
+                    },
+
+                    /*WindowEvent::RedrawRequested*/
+                    _ => {
                         let frame: wgpu::SurfaceTexture = surface
                             .get_current_texture()
                             .expect("Failed to acquire next swap chain texture");
@@ -170,6 +185,10 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 label: None,
                             });
 
+                        let pixel_colors = generate_pixels(&device, &size, &mut rng, &thread_pool);
+
+                        update_render_queue(&queue, &texture, &size, &pixel_colors);
+
                         add_renderpass_to_encode(
                             &mut encoder,
                             &view,
@@ -177,12 +196,13 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             &bind_group,
                         );
 
-                        let full_output = create_ui(window, &mut platform);
+                        // ######### rendering the egui ###########
+
+                        let full_output = create_ui(&mut platform);
 
                         let paint_jobs = platform
                             .context()
                             .tessellate(full_output.shapes, full_output.pixels_per_point);
-
                         // ######### Adding egui renderpass to the encoder ###########
                         egui_rpass
                             .add_textures(&device, &queue, &full_output.textures_delta)
@@ -192,47 +212,25 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                         egui_rpass
                             .execute(&mut encoder, &view, &paint_jobs, &screen_descriptor, None)
-                            .unwrap();
+                            .expect("egui render pass failed");
 
-                        // ######### rendering the queue ###########
                         queue.submit(Some(encoder.finish()));
+
                         frame.present();
+                        egui_rpass
+                            .remove_textures(full_output.textures_delta)
+                            .expect("textures removed");
                     }
-
-                    WindowEvent::CloseRequested => target.exit(),
-
-                    WindowEvent::MouseInput {
-                        state,
-                        button: MouseButton::Right,
-                        device_id: _,
-                    } => match state {
-                        ElementState::Pressed => {
-                            right_click_pressed = true;
-                            window
-                                .set_cursor_grab(CursorGrabMode::Confined)
-                                .expect("couldn't confine cursor");
-
-                            println!("cursor grabbed");
-                        }
-                        ElementState::Released => {
-                            right_click_pressed = false;
-                            window
-                                .set_cursor_grab(CursorGrabMode::None)
-                                .expect("Failed to release cursor");
-                            window.set_cursor_visible(true);
-                            println!("cursor released");
-                        }
-                    },
                     _ => {}
                 };
             }
 
-            if right_click_pressed {
-                window
-                    .set_cursor_position(PhysicalPosition::new(400, 200))
-                    .expect("couldn't set cursor pos");
-                window.set_cursor_visible(false);
-            }
+            //if right_click_pressed {
+            //    window
+            //        .set_cursor_position(PhysicalPosition::new(size.width, size.height))
+            //        .expect("couldn't set cursor pos");
+            //    window.set_cursor_visible(false);
+            //}
         })
         .unwrap();
 }
@@ -492,14 +490,17 @@ fn generate_sampler(device: &wgpu::Device) -> wgpu::Sampler {
     })
 }
 
-fn create_ui(window: &Window, platform: &mut Platform) -> FullOutput {
+fn create_ui(platform: &mut Platform) -> FullOutput {
     platform.begin_frame();
 
+    let egui_context = platform.context();
+
     let transparent_frame = Frame::none().fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200));
+
     egui::SidePanel::right("side_panel")
         .resizable(false)
         .frame(transparent_frame)
-        .show(&platform.context(), |ui| {
+        .show(&egui_context, |ui| {
             ui.heading("Hello, world!");
             ui.label("This panel is on the right side.");
 
@@ -514,7 +515,30 @@ fn create_ui(window: &Window, platform: &mut Platform) -> FullOutput {
             });
         });
 
-    platform.end_frame(Some(window))
+    /*if egui_context.input(|i: &egui::InputState| i.pointer.secondary_down()) {
+        println!("right_click");
+        egui::Context::send_viewport_cmd(
+            &egui_context,
+            egui::ViewportCommand::CursorGrab(egui::CursorGrab::Locked),
+        );
+
+        egui::Context::send_viewport_cmd(
+            &egui_context,
+            egui::ViewportCommand::CursorVisible(false),
+        );
+
+        egui::Context::send_viewport_cmd(
+            &egui_context,
+            egui::ViewportCommand::CursorPosition(pos2(100., 100.)),
+        );
+    } else {
+        egui::Context::send_viewport_cmd(
+            &egui_context,
+            egui::ViewportCommand::CursorGrab(egui::CursorGrab::None),
+        );
+        egui::Context::send_viewport_cmd(&egui_context, egui::ViewportCommand::CursorVisible(true));
+    }*/
+    egui_context.end_frame()
 }
 
 fn per_pixel(x: f32, y: f32) -> Vec3A {
