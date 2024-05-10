@@ -1,5 +1,5 @@
 use egui::{Frame, FullOutput};
-use rand::Rng;
+use rand::{thread_rng, Rng};
 use rayon::prelude::*;
 use std::borrow::Cow;
 use wgpu::{
@@ -15,6 +15,7 @@ use winit::{
 
 use egui_wgpu_backend::{RenderPass as EguiRenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
+use glam;
 
 pub fn main() {
     let event_loop = EventLoop::new().unwrap();
@@ -228,58 +229,53 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         .unwrap();
 }
 
+//#[allow(unused_variables)]
+//fn generate_pixels(
+//    device: &wgpu::Device,
+//    size: &winit::dpi::PhysicalSize<u32>,
+//    rng: &mut rand::rngs::ThreadRng,
+//) -> Vec<u8> {
+//    let mut pixel_colors: Vec<u8> = Vec::with_capacity((size.width * size.height * 4) as usize);
+//    for y in 0..size.height {
+//        for x in 0..size.width {
+//            let color: [u8; 4] = if rng.gen_bool(0.5) {
+//                [255, 255, 255, 255]
+//            } else {
+//                [0, 0, 0, 255]
+//            };
+//            pixel_colors.extend_from_slice(&color);
+//        }
+//    }
+//    pixel_colors
+//}
+
 #[allow(unused_variables)]
 fn generate_pixels(
     device: &wgpu::Device,
     size: &winit::dpi::PhysicalSize<u32>,
     rng: &mut rand::rngs::ThreadRng,
 ) -> Vec<u8> {
-    let mut pixel_colors: Vec<u8> = Vec::with_capacity((size.width * size.height * 4) as usize);
-    for y in 0..size.height {
-        for x in 0..size.width {
-            let color: [u8; 4] = if rng.gen_bool(0.5) {
-                [255, 255, 255, 255]
-            } else {
-                [0, 0, 0, 255]
-            };
-            pixel_colors.extend_from_slice(&color);
-        }
-    }
+    // Generate a seed from the original RNG
+
+    let pixel_colors: Vec<u8> = (0..size.height)
+        .into_par_iter()
+        .flat_map_iter(|y| {
+            //let mut local_rng = thread_rng();
+            let mut row_colors: Vec<u8> = Vec::with_capacity((size.width * 4) as usize);
+
+            for _ in 0..size.width {
+                let color = per_pixel();
+
+                let color_rgba = to_rgba(color);
+
+                row_colors.extend_from_slice(&color_rgba);
+            }
+            row_colors.into_iter()
+        })
+        .collect();
+
     pixel_colors
 }
-
-//fn generate_pixels(
-//    device: &wgpu::Device,
-//    size: winit::dpi::PhysicalSize<u32>,
-//    rng: &mut rand::rngs::ThreadRng,
-//) -> Vec<u8> {
-//    // Generate a seed from the original RNG
-//    let seed: [u8; 32] = rng.gen();
-//
-//    let pixel_colors: Vec<u8> = (0..size.height)
-//        .into_par_iter()
-//        .flat_map_iter(|y| {
-//            // Derive a row-specific seed to ensure deterministic but varied results per row
-//            let mut row_seed = seed;
-//            row_seed[0] = row_seed[0].wrapping_add(y as u8); // Simple mutation of the seed based on row index
-//
-//            let mut local_rng = SmallRng::from_seed(row_seed);
-//            let mut pixel_colors: Vec<u8> = Vec::with_capacity((size.width * 4) as usize);
-//
-//            for x in 0..size.width {
-//                let color: [u8; 4] = if local_rng.gen_bool(0.5) {
-//                    [255, 255, 255, 255]
-//                } else {
-//                    [0, 0, 0, 255]
-//                };
-//                pixel_colors.extend_from_slice(&color);
-//            }
-//            pixel_colors.into_iter()
-//        })
-//        .collect();
-//
-//    pixel_colors
-//}
 
 fn update_render_queue(
     queue: &wgpu::Queue,
@@ -501,4 +497,13 @@ fn create_ui(window: &Window, platform: &mut Platform) -> FullOutput {
         });
 
     platform.end_frame(Some(window))
+}
+
+fn per_pixel() -> glam::Vec3A {
+    glam::vec3a(0.0, 0.0, 0.0)
+}
+
+fn to_rgba(mut vector: glam::Vec3A) -> [u8; 4] {
+    vector *= 255.0;
+    [vector.x as u8, vector.y as u8, vector.z as u8, 255]
 }
