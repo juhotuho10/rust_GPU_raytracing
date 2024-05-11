@@ -58,6 +58,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let mut mouse_resting_position = egui::pos2(size.width as f32 / 2., size.height as f32 / 2.);
 
+    let mut current_mouse_pos = mouse_resting_position;
+
     let mut camera = Camera::new(size.width, size.height);
 
     let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
@@ -208,7 +210,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     .set_cursor_grab(CursorGrabMode::Confined)
                                     .expect("couldn't confine cursor");
                                 window.set_cursor_visible(false);
-                                let current_mouse_pos = platform
+                                current_mouse_pos = platform
                                     .context()
                                     .input(|i: &egui::InputState| i.pointer.latest_pos())
                                     .unwrap();
@@ -220,6 +222,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                         mouse_resting_position.y,
                                     ))
                                     .expect("couldn't set cursor pos");
+                                current_mouse_pos = mouse_resting_position;
 
                                 println!("cursor grabbed");
                                 window.request_redraw();
@@ -301,14 +304,13 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             let elapsed = start_time.elapsed().as_micros() as f32 / 1000.;
 
                             if movement_mode {
-                                let current_mouse_pos = platform
+                                current_mouse_pos = platform
                                     .context()
                                     .input(|i: &egui::InputState| i.pointer.latest_pos())
                                     .unwrap();
 
-                                let delta = current_mouse_pos - mouse_resting_position;
-
-                                dbg!(delta);
+                                let delta = (current_mouse_pos - mouse_resting_position)
+                                    .clamp(egui::vec2(-20., -20.), egui::vec2(20., 20.));
 
                                 let moved = camera.on_update(delta, &elapsed, &platform.context());
 
