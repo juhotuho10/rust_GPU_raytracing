@@ -13,8 +13,8 @@ pub struct Camera {
     far_clip: f32,
     vertical_fov: f32,
 
-    viewport_width: u32,
-    viewport_height: u32,
+    pub viewport_width: u32,
+    pub viewport_height: u32,
 
     movement_speed: f32,
     turning_speed: f32,
@@ -147,7 +147,7 @@ impl Camera {
         }
     }
 
-    fn on_resize(&mut self, width: u32, height: u32) {
+    pub fn on_resize(&mut self, width: u32, height: u32) {
         if width == self.viewport_width && height == self.viewport_height {
             return;
         }

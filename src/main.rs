@@ -4,7 +4,7 @@ use camera::Camera;
 use egui::{pos2, Frame, FullOutput};
 use rand::{thread_rng, Rng};
 use rayon::{prelude::*, ThreadPoolBuilder};
-use std::borrow::Cow;
+use std::{borrow::Cow, time};
 use wgpu::{
     Adapter, BindGroup, Device, PipelineLayout, Queue, Surface, TextureDescriptor,
     TextureDimension, TextureFormat, TextureUsages,
@@ -19,6 +19,13 @@ use winit::{
 use egui_wgpu_backend::{RenderPass as EguiRenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use glam::{vec3a, Vec3A};
+
+use std::time::Instant;
+
+struct Ray {
+    Origin: Vec3A,
+    Direction: Vec3A,
+}
 
 pub fn main() {
     let event_loop = EventLoop::new().unwrap();
@@ -112,6 +119,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
             // `event_loop.run` never returns, therefore we must do this to ensure
             // the resources are properly cleaned up.
 
+            let start_time = Instant::now();
+
             let _ = (&instance, &pipeline_layout);
 
             platform.handle_event(&event);
@@ -131,6 +140,11 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                         config.width = size.width;
                         config.height = size.height;
 
+                        screen_descriptor.physical_height = size.height;
+                        screen_descriptor.physical_width = size.width;
+
+                        camera.on_resize(size.width, size.height);
+
                         texture = create_texture(&device, size);
 
                         bind_group = create_device_bindgroup(
@@ -139,9 +153,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             &texture,
                             &sampler,
                         );
-
-                        screen_descriptor.physical_height = size.height;
-                        screen_descriptor.physical_width = size.width;
 
                         surface.configure(&device, &config);
                         // On macos the window needs to be redrawn manually after resizing
@@ -186,8 +197,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                         }
                     },
 
-                    /*WindowEvent::RedrawRequested*/
-                    _ => {
+                    WindowEvent::RedrawRequested => {
                         let frame: wgpu::SurfaceTexture = surface
                             .get_current_texture()
                             .expect("Failed to acquire next swap chain texture");
@@ -201,7 +211,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 label: None,
                             });
 
-                        let pixel_colors = generate_pixels(&device, &size, &mut rng, &thread_pool);
+                        let pixel_colors =
+                            generate_pixels(&device, &camera, &mut rng, &thread_pool);
 
                         update_render_queue(&queue, &texture, &size, &pixel_colors);
 
@@ -232,19 +243,20 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             .remove_textures(full_output.textures_delta)
                             .expect("textures removed");
                     }
-                    _ => {}
+                    _ => {
+                        window.request_redraw();
+                    }
                 };
             }
 
-            window.request_redraw();
+            let elapsed = start_time.elapsed().as_micros() as f32 / 1000.;
 
             if right_click_pressed {
                 window
                     .set_cursor_position(PhysicalPosition::new(size.width / 2, size.height / 2))
                     .expect("couldn't set cursor pos");
 
-                let mouse_movement = camera.on_update(&0.0, &platform.context());
-                dbg!(mouse_movement);
+                let moved = camera.on_update(&elapsed, &platform.context());
             }
         })
         .unwrap();
@@ -264,7 +276,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 //            // normalizing x between -1 and 1
 //            let x = x as f32 / size.width as f32 * 2. - 1.;
 //
-//            let color = per_pixel(x, y);
+//            let color = trace_ray(x, y);
 //
 //            let color_rgba = to_rgba(color);
 //            pixel_colors.extend_from_slice(&color_rgba);
@@ -276,32 +288,31 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 #[allow(unused_variables)]
 fn generate_pixels(
     device: &wgpu::Device,
-    size: &winit::dpi::PhysicalSize<u32>,
+    camera: &Camera,
     rng: &mut rand::rngs::ThreadRng,
     thread_pool: &rayon::ThreadPool,
 ) -> Vec<u8> {
-    let mut pixel_colors: Vec<u8> = Vec::with_capacity((size.width * size.height) as usize * 4);
+    let camera_pos = camera.position;
+    let ray_directions = &camera.ray_directions;
+
+    let mut pixel_colors: Vec<u8> = Vec::with_capacity(ray_directions.len() * 4);
+
     thread_pool.install(|| {
-        pixel_colors = (0..size.height)
+        pixel_colors = (0..ray_directions.len())
             .into_par_iter()
-            .flat_map_iter(|y| {
-                //let mut local_rng = thread_rng();
-                let mut row_colors: Vec<u8> = Vec::with_capacity((size.width * 4) as usize);
+            .flat_map_iter(|index| {
+                // TODO: make a struct of ray consisting of origin and direction in the camera class
 
-                // normalizing y between -1 and 1
-                let y: f32 = y as f32 / size.height as f32 * 2. - 1.;
+                let ray = Ray {
+                    Origin: camera_pos,
+                    Direction: ray_directions[index],
+                };
 
-                for x in 0..size.width {
-                    // normalizing x between -1 and 1
-                    let x = x as f32 / size.width as f32 * 2. - 1.;
+                let color = trace_ray(ray);
 
-                    let color = per_pixel(x, y);
+                let color_rgba = to_rgba(color);
 
-                    let color_rgba = to_rgba(color);
-
-                    row_colors.extend_from_slice(&color_rgba);
-                }
-                row_colors.into_iter()
+                color_rgba.into_iter()
             })
             .collect();
     });
@@ -557,7 +568,7 @@ fn create_ui(platform: &mut Platform) -> FullOutput {
     egui_context.end_frame()
 }
 
-fn per_pixel(x: f32, y: f32) -> Vec3A {
+fn trace_ray(ray: Ray) -> Vec3A {
     // (bx^2 + by^2)t^2 + 2*(axbx + ayby)t + (ax^2 + by^2 - r^2) = 0
     // where
     // a = ray origin
@@ -565,15 +576,15 @@ fn per_pixel(x: f32, y: f32) -> Vec3A {
     // r = sphere radius
     // t = hit distance
 
-    let ray_origin = vec3a(0., 0., -1.);
-    let ray_direction = vec3a(x, y, -1.);
+    dbg!(ray.Direction);
+
     let sphere_origin = vec3a(0., 0., 0.);
     let light_direction = vec3a(-1., -1., -1.).normalize();
     let radius: f32 = 0.5;
 
-    let a: f32 = ray_direction.dot(ray_direction);
-    let b: f32 = 2.0 * ray_direction.dot(ray_origin);
-    let c: f32 = ray_origin.dot(ray_origin) - (radius * radius);
+    let a: f32 = ray.Direction.dot(ray.Direction);
+    let b: f32 = 2.0 * ray.Direction.dot(ray.Origin);
+    let c: f32 = ray.Origin.dot(ray.Origin) - (radius * radius);
 
     // discriminant:
     // b^2 - 4*a*c
@@ -587,7 +598,7 @@ fn per_pixel(x: f32, y: f32) -> Vec3A {
     //let t0 = (-b + discriminant.sqrt()) / (2. * a);
     let closest_t = (-b - discriminant.sqrt()) / (2. * a);
 
-    let hit_point = ray_origin + ray_direction * closest_t;
+    let hit_point = ray.Origin + ray.Direction * closest_t;
 
     let sphere_normal = (hit_point - sphere_origin).normalize();
 
