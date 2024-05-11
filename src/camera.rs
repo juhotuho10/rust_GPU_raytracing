@@ -1,9 +1,7 @@
 use core::time;
 
 use egui::Context;
-use egui_winit_platform::Platform;
 use glam::{mat4, quat, vec2, vec3a, vec4, Mat4, Quat, Vec2, Vec3A, Vec4};
-use wgpu::hal::auxil::db;
 
 pub struct Camera {
     pub position: Vec3A,
@@ -63,6 +61,7 @@ impl Camera {
         let mouse_delta = egui_context.input(|i: &egui::InputState| i.pointer.delta());
 
         egui_context.input(|input: &egui::InputState| {
+            // forward - backward
             if input.key_down(egui::Key::W) {
                 // holding W
                 self.position += timestep * self.movement_speed * self.direction;
@@ -73,6 +72,7 @@ impl Camera {
                 moved = true;
             }
 
+            // left - right
             if input.key_down(egui::Key::D) {
                 // holding D
                 self.position += timestep * self.movement_speed * right_direction;
@@ -80,6 +80,17 @@ impl Camera {
             } else if input.key_down(egui::Key::A) {
                 // holding A
                 self.position -= timestep * self.movement_speed * right_direction;
+                moved = true;
+            }
+
+            // up - down
+            if input.key_down(egui::Key::Q) {
+                // holding Q
+                self.position += timestep * self.movement_speed * up_direction;
+                moved = true;
+            } else if input.key_down(egui::Key::E) {
+                // holding E
+                self.position -= timestep * self.movement_speed * up_direction;
                 moved = true;
             }
         });
