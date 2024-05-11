@@ -1,3 +1,6 @@
+mod camera;
+
+use camera::Camera;
 use egui::{pos2, Frame, FullOutput};
 use rand::{thread_rng, Rng};
 use rayon::{prelude::*, ThreadPoolBuilder};
@@ -31,6 +34,8 @@ pub fn main() {
 async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut rng = rand::thread_rng();
 
+    let mut camera = Camera::new();
+
     let mut right_click_pressed = false;
 
     let available_threads = rayon::current_num_threads();
@@ -44,6 +49,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut size = window.inner_size();
     size.width = size.width.max(1);
     size.height = size.height.max(1);
+
+    let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
 
     let instance = wgpu::Instance::default();
 
@@ -109,8 +116,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
             platform.handle_event(&event);
 
-            window.request_redraw();
-
             if let Event::WindowEvent {
                 window_id: _,
                 event,
@@ -152,20 +157,31 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                         device_id: _,
                     } => match state {
                         ElementState::Pressed => {
-                            //right_click_pressed = true;
+                            right_click_pressed = true;
 
                             window
                                 .set_cursor_grab(CursorGrabMode::Confined)
                                 .expect("couldn't confine cursor");
                             window.set_cursor_visible(false);
+                            let current_mouse_pos = platform
+                                .context()
+                                .input(|i: &egui::InputState| i.pointer.latest_pos())
+                                .unwrap();
+                            last_mouse_pos = current_mouse_pos;
                             println!("cursor grabbed");
                         }
                         ElementState::Released => {
-                            //right_click_pressed = false;
+                            right_click_pressed = false;
                             window
                                 .set_cursor_grab(CursorGrabMode::None)
                                 .expect("Failed to release cursor");
                             window.set_cursor_visible(true);
+                            window
+                                .set_cursor_position(PhysicalPosition::new(
+                                    last_mouse_pos.x as u32,
+                                    last_mouse_pos.y as u32,
+                                ))
+                                .expect("couldn't set cursor pos");
                             println!("cursor released");
                         }
                     },
@@ -189,12 +205,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                         update_render_queue(&queue, &texture, &size, &pixel_colors);
 
-                        add_renderpass_to_encode(
-                            &mut encoder,
-                            &view,
-                            &render_pipeline,
-                            &bind_group,
-                        );
+                        setup_renderpass(&mut encoder, &view, &render_pipeline, &bind_group);
 
                         // ######### rendering the egui ###########
 
@@ -225,12 +236,16 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                 };
             }
 
-            //if right_click_pressed {
-            //    window
-            //        .set_cursor_position(PhysicalPosition::new(size.width, size.height))
-            //        .expect("couldn't set cursor pos");
-            //    window.set_cursor_visible(false);
-            //}
+            window.request_redraw();
+
+            if right_click_pressed {
+                window
+                    .set_cursor_position(PhysicalPosition::new(size.width / 2, size.height / 2))
+                    .expect("couldn't set cursor pos");
+
+                let mouse_movement = camera.on_update(&0.0, &platform.context());
+                dbg!(mouse_movement);
+            }
         })
         .unwrap();
 }
@@ -363,7 +378,7 @@ fn create_device_bindgroup(
     })
 }
 
-fn add_renderpass_to_encode(
+fn setup_renderpass(
     encoder: &mut wgpu::CommandEncoder,
     view: &wgpu::TextureView,
     render_pipeline: &wgpu::RenderPipeline,
@@ -493,6 +508,7 @@ fn generate_sampler(device: &wgpu::Device) -> wgpu::Sampler {
 fn create_ui(platform: &mut Platform) -> FullOutput {
     platform.begin_frame();
 
+    // important, create a egui context, do not use platform.conmtext()
     let egui_context = platform.context();
 
     let transparent_frame = Frame::none().fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200));
