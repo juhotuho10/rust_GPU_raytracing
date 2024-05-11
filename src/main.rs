@@ -2,7 +2,7 @@ mod camera;
 
 use camera::Camera;
 use egui::{pos2, Frame, FullOutput};
-use rand::{thread_rng, Rng};
+use rand::{seq::index, thread_rng, Rng};
 use rayon::{prelude::*, ThreadPoolBuilder};
 use std::{borrow::Cow, time};
 use wgpu::{
@@ -11,8 +11,9 @@ use wgpu::{
 };
 use winit::{
     dpi::PhysicalPosition,
-    event::{ElementState, Event, MouseButton, WindowEvent},
-    event_loop::EventLoop,
+    event::{ElementState, Event, KeyEvent, MouseButton, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    keyboard::{KeyCode, PhysicalKey},
     window::{CursorGrabMode, Window},
 };
 
@@ -23,8 +24,8 @@ use glam::{vec3a, Vec3A};
 use std::time::Instant;
 
 struct Ray {
-    Origin: Vec3A,
-    Direction: Vec3A,
+    origin: Vec3A,
+    direction: Vec3A,
 }
 
 pub fn main() {
@@ -41,9 +42,7 @@ pub fn main() {
 async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut rng = rand::thread_rng();
 
-    let mut camera = Camera::new();
-
-    let mut right_click_pressed = false;
+    let mut movement_mode = false;
 
     let available_threads = rayon::current_num_threads();
     let used_threads = available_threads / 2;
@@ -56,6 +55,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut size = window.inner_size();
     size.width = size.width.max(1);
     size.height = size.height.max(1);
+
+    let mut camera = Camera::new(size.width, size.height);
 
     let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
 
@@ -113,151 +114,191 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     /* ##############################################3################################# */
 
+    let mut temp_counter = 0;
+
+    //event_loop.set_control_flow(ControlFlow::Poll);
     event_loop
-        .run(move |event, target| {
+        .run(/*move*/ |event, target| {
             // Have the closure take ownership of the resources.
             // `event_loop.run` never returns, therefore we must do this to ensure
             // the resources are properly cleaned up.
 
             let start_time = Instant::now();
 
+            println!("{:?}, counter: {}", event, temp_counter);
+
             let _ = (&instance, &pipeline_layout);
 
             platform.handle_event(&event);
 
-            if let Event::WindowEvent {
-                window_id: _,
-                event,
-            } = event
-            {
-                match event {
-                    WindowEvent::Resized(new_size) => {
-                        // Reconfigure the surface with the new size
+            match event {
+                Event::DeviceEvent { .. } => {
+                    window.request_redraw();
+                }
+                Event::WindowEvent { event, .. } => {
+                    match event {
+                        WindowEvent::CursorMoved {
+                            device_id: _,
+                            position,
+                        } => {}
+                        WindowEvent::Resized(new_size) => {
+                            size.width = new_size.width.max(1);
+                            size.height = new_size.height.max(1);
 
-                        size.width = new_size.width.max(1);
-                        size.height = new_size.height.max(1);
+                            config.width = size.width;
+                            config.height = size.height;
 
-                        config.width = size.width;
-                        config.height = size.height;
+                            screen_descriptor.physical_height = size.height;
+                            screen_descriptor.physical_width = size.width;
 
-                        screen_descriptor.physical_height = size.height;
-                        screen_descriptor.physical_width = size.width;
+                            camera.on_resize(size.width, size.height);
 
-                        camera.on_resize(size.width, size.height);
+                            texture = create_texture(&device, size);
 
-                        texture = create_texture(&device, size);
+                            bind_group = create_device_bindgroup(
+                                &device,
+                                &bind_group_layout,
+                                &texture,
+                                &sampler,
+                            );
 
-                        bind_group = create_device_bindgroup(
-                            &device,
-                            &bind_group_layout,
-                            &texture,
-                            &sampler,
-                        );
+                            surface.configure(&device, &config);
+                            // On macos the window needs to be redrawn manually after resizing
 
-                        surface.configure(&device, &config);
-                        // On macos the window needs to be redrawn manually after resizing
+                            window.request_redraw();
+                        }
 
-                        window.request_redraw();
-                    }
+                        WindowEvent::CloseRequested => {
+                            // Exit the application
+                            target.exit();
+                        }
 
-                    WindowEvent::CloseRequested => target.exit(),
+                        WindowEvent::KeyboardInput {
+                            event:
+                                KeyEvent {
+                                    physical_key: PhysicalKey::Code(KeyCode::Space),
+                                    repeat: false,
+                                    state: ElementState::Pressed,
+                                    ..
+                                },
+                            ..
+                        } => {
+                            // Logic for spacebar pressed
+                            movement_mode = !movement_mode;
+                            dbg!(movement_mode);
+                        }
 
-                    WindowEvent::MouseInput {
-                        state,
-                        button: MouseButton::Right,
-                        device_id: _,
-                    } => match state {
-                        ElementState::Pressed => {
-                            right_click_pressed = true;
+                        WindowEvent::MouseInput {
+                            state,
+                            button: MouseButton::Right,
+                            ..
+                        } => match state {
+                            ElementState::Pressed => {
+                                movement_mode = true;
 
-                            window
-                                .set_cursor_grab(CursorGrabMode::Confined)
-                                .expect("couldn't confine cursor");
-                            window.set_cursor_visible(false);
-                            let current_mouse_pos = platform
+                                window
+                                    .set_cursor_grab(CursorGrabMode::Confined)
+                                    .expect("couldn't confine cursor");
+                                window.set_cursor_visible(false);
+                                /*let current_mouse_pos = platform
+                                    .context()
+                                    .input(|i: &egui::InputState| i.pointer.latest_pos())
+                                    .unwrap();
+                                last_mouse_pos = current_mouse_pos;*/
+                                println!("cursor grabbed");
+                                window.request_redraw();
+                            }
+                            ElementState::Released => {
+                                // Logic when right mouse button is released
+                                movement_mode = false;
+                                window
+                                    .set_cursor_grab(CursorGrabMode::None)
+                                    .expect("Failed to release cursor");
+                                window.set_cursor_visible(true);
+                                window
+                                    .set_cursor_position(PhysicalPosition::new(
+                                        last_mouse_pos.x as u32,
+                                        last_mouse_pos.y as u32,
+                                    ))
+                                    .expect("couldn't set cursor pos");
+                                println!("cursor released");
+
+                                dbg!(&camera.direction);
+                                window.request_redraw();
+                            }
+                        },
+
+                        WindowEvent::RedrawRequested => {
+                            // Logic to redraw the window
+                            let frame: wgpu::SurfaceTexture = surface
+                                .get_current_texture()
+                                .expect("Failed to acquire next swap chain texture");
+
+                            let view: wgpu::TextureView = frame
+                                .texture
+                                .create_view(&wgpu::TextureViewDescriptor::default());
+
+                            let mut encoder: wgpu::CommandEncoder =
+                                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                    label: None,
+                                });
+
+                            let pixel_colors =
+                                generate_pixels(&device, &camera, &mut rng, &thread_pool);
+
+                            update_render_queue(&queue, &texture, &size, &pixel_colors);
+
+                            setup_renderpass(&mut encoder, &view, &render_pipeline, &bind_group);
+                            let full_output = create_ui(&mut platform);
+
+                            /*let paint_jobs = platform
                                 .context()
-                                .input(|i: &egui::InputState| i.pointer.latest_pos())
-                                .unwrap();
-                            last_mouse_pos = current_mouse_pos;
-                            println!("cursor grabbed");
+                                .tessellate(full_output.shapes, full_output.pixels_per_point);
+                            // ######### Adding egui renderpass to the encoder ###########
+                            egui_rpass
+                                .add_textures(&device, &queue, &full_output.textures_delta)
+                                .expect("couldnt add textures");
+
+                            egui_rpass.update_buffers(&device, &queue, &paint_jobs, &screen_descriptor);
+
+                            egui_rpass
+                                .execute(&mut encoder, &view, &paint_jobs, &screen_descriptor, None)
+                                .expect("egui render pass failed");*/
+
+                            // ######### rendering the queue ###########
+                            queue.submit(Some(encoder.finish()));
+
+                            frame.present();
+
+                            println!("new window drawn: {}", temp_counter);
+
+                            //egui_rpass
+                            //    .remove_textures(full_output.textures_delta)
+                            //    .expect("textures removed");
+
+                            //-------------
+
+                            let elapsed = start_time.elapsed().as_micros() as f32 / 1000.;
+
+                            if movement_mode {
+                                //window
+                                //    .set_cursor_position(PhysicalPosition::new(size.width / 2, size.height / 2))
+                                //    .expect("couldn't set cursor pos");
+
+                                let moved = camera.on_update(&elapsed, &platform.context());
+                            }
                         }
-                        ElementState::Released => {
-                            right_click_pressed = false;
-                            window
-                                .set_cursor_grab(CursorGrabMode::None)
-                                .expect("Failed to release cursor");
-                            window.set_cursor_visible(true);
-                            window
-                                .set_cursor_position(PhysicalPosition::new(
-                                    last_mouse_pos.x as u32,
-                                    last_mouse_pos.y as u32,
-                                ))
-                                .expect("couldn't set cursor pos");
-                            println!("cursor released");
-                        }
-                    },
 
-                    WindowEvent::RedrawRequested => {
-                        let frame: wgpu::SurfaceTexture = surface
-                            .get_current_texture()
-                            .expect("Failed to acquire next swap chain texture");
-
-                        let view: wgpu::TextureView = frame
-                            .texture
-                            .create_view(&wgpu::TextureViewDescriptor::default());
-
-                        let mut encoder: wgpu::CommandEncoder =
-                            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                                label: None,
-                            });
-
-                        let pixel_colors =
-                            generate_pixels(&device, &camera, &mut rng, &thread_pool);
-
-                        update_render_queue(&queue, &texture, &size, &pixel_colors);
-
-                        setup_renderpass(&mut encoder, &view, &render_pipeline, &bind_group);
-
-                        // ######### rendering the egui ###########
-
-                        let full_output = create_ui(&mut platform);
-
-                        let paint_jobs = platform
-                            .context()
-                            .tessellate(full_output.shapes, full_output.pixels_per_point);
-                        // ######### Adding egui renderpass to the encoder ###########
-                        egui_rpass
-                            .add_textures(&device, &queue, &full_output.textures_delta)
-                            .expect("couldnt add textures");
-
-                        egui_rpass.update_buffers(&device, &queue, &paint_jobs, &screen_descriptor);
-
-                        egui_rpass
-                            .execute(&mut encoder, &view, &paint_jobs, &screen_descriptor, None)
-                            .expect("egui render pass failed");
-
-                        queue.submit(Some(encoder.finish()));
-
-                        frame.present();
-                        egui_rpass
-                            .remove_textures(full_output.textures_delta)
-                            .expect("textures removed");
+                        _ => {} // Handle other window events that are not explicitly handled above
                     }
-                    _ => {
-                        window.request_redraw();
-                    }
-                };
+                }
+                _ => {} // Handle other types of events that are not window events
             }
 
-            let elapsed = start_time.elapsed().as_micros() as f32 / 1000.;
+            // ######### rendering the egui ###########
 
-            if right_click_pressed {
-                window
-                    .set_cursor_position(PhysicalPosition::new(size.width / 2, size.height / 2))
-                    .expect("couldn't set cursor pos");
-
-                let moved = camera.on_update(&elapsed, &platform.context());
-            }
+            window.request_redraw();
+            temp_counter += 1;
         })
         .unwrap();
 }
@@ -265,22 +306,24 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 //#[allow(unused_variables)]
 //fn generate_pixels(
 //    device: &wgpu::Device,
-//    size: &winit::dpi::PhysicalSize<u32>,
+//    camera: &Camera,
 //    rng: &mut rand::rngs::ThreadRng,
 //) -> Vec<u8> {
-//    let mut pixel_colors: Vec<u8> = Vec::with_capacity((size.width * size.height * 4) as usize);
-//    for y in 0..size.height {
-//        let y: f32 = y as f32 / size.height as f32 * 2. - 1.;
+//    let camera_pos = camera.position;
+//    let ray_directions = &camera.ray_directions;
 //
-//        for x in 0..size.width {
-//            // normalizing x between -1 and 1
-//            let x = x as f32 / size.width as f32 * 2. - 1.;
+//    let mut pixel_colors: Vec<u8> = Vec::with_capacity(ray_directions.len() * 4);
 //
-//            let color = trace_ray(x, y);
+//    for index in 0..ray_directions.len() {
+//        let ray = Ray {
+//            origin: camera_pos,
+//            direction: ray_directions[index],
+//        };
 //
-//            let color_rgba = to_rgba(color);
-//            pixel_colors.extend_from_slice(&color_rgba);
-//        }
+//        let color = trace_ray(ray);
+//
+//        let color_rgba = to_rgba(color);
+//        pixel_colors.extend_from_slice(&color_rgba);
 //    }
 //    pixel_colors
 //}
@@ -304,8 +347,8 @@ fn generate_pixels(
                 // TODO: make a struct of ray consisting of origin and direction in the camera class
 
                 let ray = Ray {
-                    Origin: camera_pos,
-                    Direction: ray_directions[index],
+                    origin: camera_pos,
+                    direction: ray_directions[index],
                 };
 
                 let color = trace_ray(ray);
@@ -576,15 +619,15 @@ fn trace_ray(ray: Ray) -> Vec3A {
     // r = sphere radius
     // t = hit distance
 
-    dbg!(ray.Direction);
+    //dbg!(ray.direction);
 
     let sphere_origin = vec3a(0., 0., 0.);
     let light_direction = vec3a(-1., -1., -1.).normalize();
     let radius: f32 = 0.5;
 
-    let a: f32 = ray.Direction.dot(ray.Direction);
-    let b: f32 = 2.0 * ray.Direction.dot(ray.Origin);
-    let c: f32 = ray.Origin.dot(ray.Origin) - (radius * radius);
+    let a: f32 = ray.direction.dot(ray.direction);
+    let b: f32 = 2.0 * ray.direction.dot(ray.origin);
+    let c: f32 = ray.origin.dot(ray.origin) - (radius * radius);
 
     // discriminant:
     // b^2 - 4*a*c
@@ -598,7 +641,7 @@ fn trace_ray(ray: Ray) -> Vec3A {
     //let t0 = (-b + discriminant.sqrt()) / (2. * a);
     let closest_t = (-b - discriminant.sqrt()) / (2. * a);
 
-    let hit_point = ray.Origin + ray.Direction * closest_t;
+    let hit_point = ray.origin + ray.direction * closest_t;
 
     let sphere_normal = (hit_point - sphere_origin).normalize();
 
