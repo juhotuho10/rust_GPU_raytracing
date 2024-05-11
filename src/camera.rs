@@ -1,8 +1,5 @@
-use core::time;
-
 use egui::Context;
-use glam::{mat4, quat, vec2, vec3a, vec4, Mat4, Quat, Vec2, Vec3A, Vec4};
-use rayon::vec;
+use glam::{vec2, vec3a, vec4, Mat4, Quat, Vec2, Vec3A, Vec4};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ray {
