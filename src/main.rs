@@ -56,6 +56,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     size.width = size.width.max(1);
     size.height = size.height.max(1);
 
+    let mut mouse_resting_position = egui::pos2(size.width as f32 / 2., size.height as f32 / 2.);
+
     let mut camera = Camera::new(size.width, size.height);
 
     let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
@@ -153,6 +155,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             screen_descriptor.physical_height = size.height;
                             screen_descriptor.physical_width = size.width;
 
+                            mouse_resting_position =
+                                egui::pos2(size.width as f32 / 2., size.height as f32 / 2.);
+
                             camera.on_resize(size.width, size.height);
 
                             texture = create_texture(&device, size);
@@ -203,11 +208,19 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     .set_cursor_grab(CursorGrabMode::Confined)
                                     .expect("couldn't confine cursor");
                                 window.set_cursor_visible(false);
-                                /*let current_mouse_pos = platform
+                                let current_mouse_pos = platform
                                     .context()
                                     .input(|i: &egui::InputState| i.pointer.latest_pos())
                                     .unwrap();
-                                last_mouse_pos = current_mouse_pos;*/
+                                last_mouse_pos = current_mouse_pos;
+
+                                window
+                                    .set_cursor_position(PhysicalPosition::new(
+                                        mouse_resting_position.x,
+                                        mouse_resting_position.y,
+                                    ))
+                                    .expect("couldn't set cursor pos");
+
                                 println!("cursor grabbed");
                                 window.request_redraw();
                             }
@@ -226,7 +239,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     .expect("couldn't set cursor pos");
                                 println!("cursor released");
 
-                                dbg!(&camera.direction);
                                 window.request_redraw();
                             }
                         },
@@ -254,7 +266,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             setup_renderpass(&mut encoder, &view, &render_pipeline, &bind_group);
                             let full_output = create_ui(&mut platform);
 
-                            /*let paint_jobs = platform
+                            let paint_jobs = platform
                                 .context()
                                 .tessellate(full_output.shapes, full_output.pixels_per_point);
                             // ######### Adding egui renderpass to the encoder ###########
@@ -262,11 +274,16 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 .add_textures(&device, &queue, &full_output.textures_delta)
                                 .expect("couldnt add textures");
 
-                            egui_rpass.update_buffers(&device, &queue, &paint_jobs, &screen_descriptor);
+                            egui_rpass.update_buffers(
+                                &device,
+                                &queue,
+                                &paint_jobs,
+                                &screen_descriptor,
+                            );
 
                             egui_rpass
                                 .execute(&mut encoder, &view, &paint_jobs, &screen_descriptor, None)
-                                .expect("egui render pass failed");*/
+                                .expect("egui render pass failed");
 
                             // ######### rendering the queue ###########
                             queue.submit(Some(encoder.finish()));
@@ -284,11 +301,23 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             let elapsed = start_time.elapsed().as_micros() as f32 / 1000.;
 
                             if movement_mode {
-                                //window
-                                //    .set_cursor_position(PhysicalPosition::new(size.width / 2, size.height / 2))
-                                //    .expect("couldn't set cursor pos");
+                                let current_mouse_pos = platform
+                                    .context()
+                                    .input(|i: &egui::InputState| i.pointer.latest_pos())
+                                    .unwrap();
 
-                                let moved = camera.on_update(&elapsed, &platform.context());
+                                let delta = current_mouse_pos - mouse_resting_position;
+
+                                dbg!(delta);
+
+                                let moved = camera.on_update(delta, &elapsed, &platform.context());
+
+                                window
+                                    .set_cursor_position(PhysicalPosition::new(
+                                        mouse_resting_position.x,
+                                        mouse_resting_position.y,
+                                    ))
+                                    .expect("couldn't set cursor pos");
                             }
                         }
 

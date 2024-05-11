@@ -28,7 +28,7 @@ impl Camera {
     pub fn new(width: u32, height: u32) -> Camera {
         let mut camera = Camera {
             position: vec3a(0., 0., 3.),
-            direction: vec3a(1., 0., 0.),
+            direction: vec3a(0., 0., -1.),
             ray_directions: vec![],
 
             viewport_width: width,
@@ -48,17 +48,25 @@ impl Camera {
         };
 
         camera.on_resize(width, height);
+        camera.recalculate_view();
+        camera.recalculate_ray_directions();
+
         camera
     }
 
-    pub fn on_update(&mut self, timestep: &f32, egui_context: &Context) -> bool {
+    pub fn on_update(
+        &mut self,
+        mouse_delta: egui::Vec2,
+        timestep: &f32,
+        egui_context: &Context,
+    ) -> bool {
         let up_direction = glam::Vec3A::Y;
 
         let right_direction = self.direction.cross(up_direction);
 
         let mut moved: bool = false;
 
-        let mouse_delta = egui_context.input(|i: &egui::InputState| i.pointer.delta());
+        //let mouse_delta = egui_context.input(|i: &egui::InputState| i.pointer.delta());
 
         egui_context.input(|input: &egui::InputState| {
             // forward - backward
@@ -108,6 +116,7 @@ impl Camera {
             self.direction = q.mul_vec3(self.direction.into()).into();
 
             moved = true;
+            dbg!(self.direction);
         }
 
         if moved {
