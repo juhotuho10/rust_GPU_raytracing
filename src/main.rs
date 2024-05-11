@@ -1,3 +1,4 @@
+mod Scene;
 mod camera;
 
 use camera::{Camera, Ray};
@@ -16,6 +17,7 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
     window::{CursorGrabMode, Window},
 };
+use Scene::{RenderScene, Sphere};
 
 use egui_wgpu_backend::{RenderPass as EguiRenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};

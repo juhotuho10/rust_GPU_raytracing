@@ -1,9 +1,10 @@
-#[derive(Debug, Clone, Copy, PartialEq)]
+use glam::Vec3A;
 
-pub struct Scene {
+#[derive(Debug, Clone, PartialEq)]
+pub struct RenderScene {
     pub spheres: Vec<Sphere>,
 }
-
+#[derive(Debug, Clone, PartialEq)]
 pub struct Sphere {
     pub position: Vec3A,
     pub radius: f32,
