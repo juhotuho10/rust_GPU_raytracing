@@ -59,6 +59,28 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let mut camera = Camera::new(size.width, size.height);
 
+    let sphere_a: Sphere = Sphere {
+        position: vec3a(0., 0., 0.),
+        radius: 0.5,
+        albedo: vec3a(1., 0., 1.),
+    };
+
+    let sphere_b: Sphere = Sphere {
+        position: vec3a(0.5, 0., 1.),
+        radius: 0.2,
+        albedo: vec3a(0.1, 0.9, 0.7),
+    };
+
+    let sphere_c: Sphere = Sphere {
+        position: vec3a(-2., 0.5, 4.),
+        radius: 1.0,
+        albedo: vec3a(0.9, 0.9, 0.4),
+    };
+
+    let scene: RenderScene = RenderScene {
+        spheres: vec![sphere_a, sphere_b, sphere_c],
+    };
+
     let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
 
     let instance = wgpu::Instance::default();
@@ -256,7 +278,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 });
 
                             let pixel_colors =
-                                generate_pixels(&device, &camera, &mut rng, &thread_pool);
+                                generate_pixels(&device, &scene, &camera, &mut rng, &thread_pool);
 
                             update_render_queue(&queue, &texture, &size, &pixel_colors);
 
@@ -363,6 +385,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 #[allow(unused_variables)]
 fn generate_pixels(
     device: &wgpu::Device,
+    scene: &RenderScene,
     camera: &Camera,
     rng: &mut rand::rngs::ThreadRng,
     thread_pool: &rayon::ThreadPool,
@@ -376,7 +399,7 @@ fn generate_pixels(
         pixel_colors = (0..ray_directions.len())
             .into_par_iter()
             .flat_map_iter(|index| {
-                let color = trace_ray(ray_directions[index]);
+                let color = trace_ray(scene, &ray_directions[index]);
 
                 let color_rgba = to_rgba(color);
 
@@ -613,7 +636,7 @@ fn create_ui(platform: &mut Platform) -> FullOutput {
     egui_context.end_frame()
 }
 
-fn trace_ray(ray: Ray) -> Vec3A {
+fn trace_ray(scene: &RenderScene, ray: &Ray) -> Vec3A {
     // (bx^2 + by^2)t^2 + 2*(axbx + ayby)t + (ax^2 + by^2 - r^2) = 0
     // where
     // a = ray origin
@@ -623,35 +646,58 @@ fn trace_ray(ray: Ray) -> Vec3A {
 
     //dbg!(ray.direction);
 
-    let sphere_origin = vec3a(0., 0., 0.);
-    let light_direction = vec3a(1., 1., -1.).normalize();
-    let radius: f32 = 0.5;
+    let clear_color = vec3a(0., 0., 0.);
+
+    let mut hit_distance = f32::MAX;
+    let mut closest_sphere: Option<&Sphere> = None;
+
+    if scene.spheres.is_empty() {
+        return clear_color;
+    }
 
     let a: f32 = ray.direction.dot(ray.direction);
-    let b: f32 = 2.0 * ray.direction.dot(ray.origin);
-    let c: f32 = ray.origin.dot(ray.origin) - (radius * radius);
 
-    // discriminant:
-    // b^2 - 4*a*c
-    let discriminant = b * b - 4. * a * c;
+    for sphere in &scene.spheres {
+        let origin = ray.origin - sphere.position;
 
-    if discriminant < 0. {
-        // we missed the sphere
-        return Vec3A::splat(0.);
+        let b: f32 = 2.0 * ray.direction.dot(origin);
+        let c: f32 = origin.dot(origin) - (sphere.radius * sphere.radius);
+
+        // discriminant:
+        // b^2 - 4*a*c
+        let discriminant = b * b - 4. * a * c;
+
+        if discriminant < 0. {
+            // we missed the sphere
+            continue;
+        }
+        // (-b +- discriminant) / 2a
+        //let t0 = (-b + discriminant.sqrt()) / (2. * a);
+
+        let current_t = (-b - discriminant.sqrt()) / (2. * a);
+        if current_t < hit_distance {
+            hit_distance = current_t;
+            closest_sphere = Some(sphere);
+        }
     }
-    // (-b +- discriminant) / 2a
-    //let t0 = (-b + discriminant.sqrt()) / (2. * a);
-    let closest_t = (-b - discriminant.sqrt()) / (2. * a);
 
-    let hit_point = ray.origin + ray.direction * closest_t;
+    match closest_sphere {
+        None => clear_color,
+        Some(closest_sphere) => {
+            let light_direction = vec3a(1., 1., -1.).normalize();
 
-    let sphere_normal = (hit_point - sphere_origin).normalize();
+            let origin = ray.origin - closest_sphere.position;
+            let hit_point = origin + ray.direction * hit_distance;
 
-    // cosine of the angle between hitpoin and the light direction
-    // min light intenstiy is 0
-    let light_intensity = sphere_normal.dot(-light_direction).max(0.05);
+            let sphere_normal = hit_point.normalize();
 
-    vec3a(1., 0., 1.) * light_intensity
+            // cosine of the angle between hitpoin and the light direction
+            // min light intenstiy is 0
+            let light_intensity = sphere_normal.dot(-light_direction).max(0.05);
+
+            closest_sphere.albedo * light_intensity
+        }
+    }
 }
 
 fn to_rgba(mut vector: Vec3A) -> [u8; 4] {
