@@ -41,7 +41,7 @@ impl Camera {
             vertical_fov: 45.0,
 
             movement_speed: 0.05,
-            turning_speed: 0.0003,
+            turning_speed: 0.003,
 
             projection: Mat4::from_cols_slice(&[1.0; 16]),
             inverse_projection: Mat4::from_cols_slice(&[1.0; 16]),
@@ -84,19 +84,19 @@ impl Camera {
             }
         });
 
-        if mouse_delta.x as u8 != 0 || mouse_delta.y as u8 != 0 {
+        if mouse_delta != egui::Vec2::ZERO {
             // rotate the camera
 
             let pitch_delta: f32 = mouse_delta.y * self.turning_speed;
             let yaw_delta: f32 = mouse_delta.x * self.turning_speed;
 
-            let right_rotation = Quat::from_axis_angle(right_direction.into(), -pitch_delta);
+            let right_rotation = Quat::from_axis_angle(right_direction.into(), pitch_delta);
             let up_rotation = Quat::from_axis_angle(up_direction.into(), -yaw_delta);
 
             let q: Quat = (right_rotation * up_rotation).normalize();
             self.direction = q.mul_vec3(self.direction.into()).into();
 
-            //moved = true;
+            moved = true;
         }
 
         if moved {

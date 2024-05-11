@@ -125,7 +125,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
             let start_time = Instant::now();
 
-            println!("{:?}, counter: {}", event, temp_counter);
+            //println!("{:?}, counter: {}", event, temp_counter);
 
             let _ = (&instance, &pipeline_layout);
 
@@ -140,7 +140,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                         WindowEvent::CursorMoved {
                             device_id: _,
                             position,
-                        } => {}
+                        } => {
+                            window.request_redraw();
+                        }
                         WindowEvent::Resized(new_size) => {
                             size.width = new_size.width.max(1);
                             size.height = new_size.height.max(1);
@@ -186,6 +188,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             // Logic for spacebar pressed
                             movement_mode = !movement_mode;
                             dbg!(movement_mode);
+                            window.request_redraw();
                         }
 
                         WindowEvent::MouseInput {
@@ -289,10 +292,14 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             }
                         }
 
-                        _ => {} // Handle other window events that are not explicitly handled above
+                        _ => {
+                            window.request_redraw();
+                        } // Handle other window events that are not explicitly handled above
                     }
                 }
-                _ => {} // Handle other types of events that are not window events
+                _ => {
+                    window.request_redraw();
+                } // Handle other types of events that are not window events
             }
 
             // ######### rendering the egui ###########
