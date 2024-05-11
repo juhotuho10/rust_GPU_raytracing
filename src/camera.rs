@@ -2,11 +2,19 @@ use core::time;
 
 use egui::Context;
 use glam::{mat4, quat, vec2, vec3a, vec4, Mat4, Quat, Vec2, Vec3A, Vec4};
+use rayon::vec;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Ray {
+    pub origin: Vec3A,
+    pub direction: Vec3A,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Camera {
     pub position: Vec3A,
     pub direction: Vec3A,
-    pub ray_directions: Vec<Vec3A>,
+    pub ray_directions: Vec<Ray>,
 
     near_clip: f32,
     far_clip: f32,
@@ -148,7 +156,10 @@ impl Camera {
     pub fn recalculate_ray_directions(&mut self) {
         self.ray_directions.resize(
             (self.viewport_width * self.viewport_height) as usize,
-            Vec3A::ZERO,
+            Ray {
+                origin: Vec3A::splat(0.),
+                direction: Vec3A::splat(0.),
+            },
         );
 
         // converting normalized -1 to 1 directions into worldspace directions
@@ -171,7 +182,13 @@ impl Camera {
                     (self.inverse_view * world_space_target).truncate().into();
 
                 // caching the ray directions so we dont need to calculate them every frame
-                self.ray_directions[(x + y * self.viewport_width) as usize] = ray_direction;
+
+                let new_ray: Ray = Ray {
+                    origin: self.position,
+                    direction: ray_direction,
+                };
+
+                self.ray_directions[(x + y * self.viewport_width) as usize] = new_ray;
             }
         }
     }

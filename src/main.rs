@@ -1,6 +1,6 @@
 mod camera;
 
-use camera::Camera;
+use camera::{Camera, Ray};
 use egui::{pos2, Frame, FullOutput};
 use rand::{seq::index, thread_rng, Rng};
 use rayon::{prelude::*, ThreadPoolBuilder};
@@ -22,11 +22,6 @@ use egui_winit_platform::{Platform, PlatformDescriptor};
 use glam::{vec3a, Vec3A};
 
 use std::time::Instant;
-
-struct Ray {
-    origin: Vec3A,
-    direction: Vec3A,
-}
 
 pub fn main() {
     let event_loop = EventLoop::new().unwrap();
@@ -192,9 +187,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 },
                             ..
                         } => {
-                            // Logic for spacebar pressed
-                            movement_mode = !movement_mode;
-                            dbg!(movement_mode);
                             window.request_redraw();
                         }
 
@@ -382,14 +374,7 @@ fn generate_pixels(
         pixel_colors = (0..ray_directions.len())
             .into_par_iter()
             .flat_map_iter(|index| {
-                // TODO: make a struct of ray consisting of origin and direction in the camera class
-
-                let ray = Ray {
-                    origin: camera_pos,
-                    direction: ray_directions[index],
-                };
-
-                let color = trace_ray(ray);
+                let color = trace_ray(ray_directions[index]);
 
                 let color_rgba = to_rgba(color);
 
@@ -623,29 +608,6 @@ fn create_ui(platform: &mut Platform) -> FullOutput {
             });
         });
 
-    /*if egui_context.input(|i: &egui::InputState| i.pointer.secondary_down()) {
-        println!("right_click");
-        egui::Context::send_viewport_cmd(
-            &egui_context,
-            egui::ViewportCommand::CursorGrab(egui::CursorGrab::Locked),
-        );
-
-        egui::Context::send_viewport_cmd(
-            &egui_context,
-            egui::ViewportCommand::CursorVisible(false),
-        );
-
-        egui::Context::send_viewport_cmd(
-            &egui_context,
-            egui::ViewportCommand::CursorPosition(pos2(100., 100.)),
-        );
-    } else {
-        egui::Context::send_viewport_cmd(
-            &egui_context,
-            egui::ViewportCommand::CursorGrab(egui::CursorGrab::None),
-        );
-        egui::Context::send_viewport_cmd(&egui_context, egui::ViewportCommand::CursorVisible(true));
-    }*/
     egui_context.end_frame()
 }
 
@@ -660,7 +622,7 @@ fn trace_ray(ray: Ray) -> Vec3A {
     //dbg!(ray.direction);
 
     let sphere_origin = vec3a(0., 0., 0.);
-    let light_direction = vec3a(-1., -1., -1.).normalize();
+    let light_direction = vec3a(1., 1., -1.).normalize();
     let radius: f32 = 0.5;
 
     let a: f32 = ray.direction.dot(ray.direction);
