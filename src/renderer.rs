@@ -49,6 +49,22 @@ impl Renderer {
         pixel_colors
     }
 
+    // single threadded version of the rendering for testing
+    /*pub fn generate_pixels(
+        &self,
+        rng: &mut rand::rngs::ThreadRng,
+        thread_pool: &rayon::ThreadPool,
+    ) -> Vec<u8> {
+        let mut pixel_colors: Vec<u8> = Vec::with_capacity(&self.camera.ray_directions.len() * 4);
+        let ray_directions = &self.camera.ray_directions;
+
+        for index in 0..ray_directions.len() {
+            let color_rgba = self.per_pixel(index, 2);
+            pixel_colors.extend_from_slice(&color_rgba);
+        }
+        pixel_colors
+    }*/
+
     fn trace_ray(&self, ray: &Ray) -> HitPayload {
         // (bx^2 + by^2)t^2 + 2*(axbx + ayby)t + (ax^2 + by^2 - r^2) = 0
         // where
@@ -126,6 +142,8 @@ impl Renderer {
         let mut final_color = Vec3A::splat(0.);
         let mut rng = rand::thread_rng();
 
+        let mut random_scatter: Vec3A = rng.gen();
+
         for i in 0..bounces {
             let hit_payload = self.trace_ray(&ray);
 
@@ -153,8 +171,6 @@ impl Renderer {
             // move new ray origin to the position of the hit
             // move a little bit towards he normal so that the ray isnt cast from within the wall
             ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
-
-            let mut random_scatter: Vec3A = rng.gen();
 
             // scale random values between -0.5 and 0.5
             random_scatter -= 0.5;

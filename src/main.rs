@@ -5,17 +5,17 @@ mod renderer;
 use camera::Camera;
 use Scene::{Material, RenderScene, Sphere};
 
-use egui::{pos2, Frame, FullOutput};
+use egui::{pos2, Frame, FullOutput, Slider};
 use rand::{seq::index, thread_rng, Rng};
 use rayon::{prelude::*, ThreadPoolBuilder};
 use renderer::Renderer;
-use std::{borrow::Cow, time};
+use std::{borrow::Cow, fmt::format, time};
 use wgpu::{
     Adapter, BindGroup, Device, PipelineLayout, Queue, Surface, TextureDescriptor,
     TextureDimension, TextureFormat, TextureUsages,
 };
 use winit::{
-    dpi::PhysicalPosition,
+    dpi::{PhysicalPosition, PhysicalSize, Size},
     event::{ElementState, Event, KeyEvent, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
@@ -33,7 +33,11 @@ pub fn main() {
 
     let builder = winit::window::WindowBuilder::new();
 
-    let window = builder.build(&event_loop).unwrap();
+    let window_size = PhysicalSize::new(1200, 600);
+    let window = builder
+        .with_inner_size(window_size)
+        .build(&event_loop)
+        .unwrap();
 
     env_logger::init();
     pollster::block_on(run(event_loop, window));
@@ -74,18 +78,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     };
 
     let sphere_b: Sphere = Sphere {
-        position: vec3a(0.5, 0., 1.),
-        radius: 0.2,
-        material: Material {
-            albedo: vec3a(0.1, 0.9, 0.7),
-            roughness: 1.0,
-            metallic: 0.0,
-        },
-    };
-
-    let sphere_c: Sphere = Sphere {
-        position: vec3a(-2., -0.5, 4.),
-        radius: 1.0,
+        position: vec3a(-3., -1.0, 3.),
+        radius: 2.0,
 
         material: Material {
             albedo: vec3a(0.9, 0.9, 0.4),
@@ -106,7 +100,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     };
 
     let scene: RenderScene = RenderScene {
-        spheres: vec![sphere_a, sphere_b, sphere_c, floor],
+        spheres: vec![sphere_a, sphere_b, floor],
     };
 
     let mut scene_renderer: Renderer = Renderer { camera, scene };
@@ -167,8 +161,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     /* ##############################################3################################# */
 
-    let mut temp_counter = 0;
-
     //event_loop.set_control_flow(ControlFlow::Poll);
     event_loop
         .run(/*move*/ |event, target| {
@@ -177,8 +169,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
             // the resources are properly cleaned up.
 
             let start_time = Instant::now();
-
-            //println!("{:?}, counter: {}", event, temp_counter);
 
             let _ = (&instance, &pipeline_layout);
 
@@ -313,7 +303,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             update_render_queue(&queue, &texture, &size, &pixel_colors);
 
                             setup_renderpass(&mut encoder, &view, &render_pipeline, &bind_group);
-                            let full_output = create_ui(&mut platform);
+                            let full_output = create_ui(&mut platform, &mut scene_renderer);
 
                             let paint_jobs = platform
                                 .context()
@@ -338,8 +328,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             queue.submit(Some(encoder.finish()));
 
                             frame.present();
-
-                            println!("new window drawn: {}", temp_counter);
 
                             //egui_rpass
                             //    .remove_textures(full_output.textures_delta)
@@ -383,33 +371,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
             // ######### rendering the egui ###########
 
             window.request_redraw();
-            temp_counter += 1;
         })
         .unwrap();
 }
-
-//fn generate_pixels(
-//    camera: &Camera,
-//    rng: &mut rand::rngs::ThreadRng,
-//) -> Vec<u8> {
-//    let camera_pos = camera.position;
-//    let ray_directions = &camera.ray_directions;
-//
-//    let mut pixel_colors: Vec<u8> = Vec::with_capacity(ray_directions.len() * 4);
-//
-//    for index in 0..ray_directions.len() {
-//        let ray = Ray {
-//            origin: camera_pos,
-//            direction: ray_directions[index],
-//        };
-//
-//        let color = trace_ray(ray);
-//
-//        let color_rgba = to_rgba(color);
-//        pixel_colors.extend_from_slice(&color_rgba);
-//    }
-//    pixel_colors
-//}
 
 fn update_render_queue(
     queue: &wgpu::Queue,
@@ -608,11 +572,15 @@ fn generate_sampler(device: &wgpu::Device) -> wgpu::Sampler {
     })
 }
 
-fn create_ui(platform: &mut Platform) -> FullOutput {
+fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOutput {
     platform.begin_frame();
 
     // important, create a egui context, do not use platform.conmtext()
     let egui_context = platform.context();
+
+    let mut style = (*egui_context.style()).clone();
+    style.spacing.slider_width = 50.0;
+    egui_context.set_style(style);
 
     let transparent_frame = Frame::none().fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200));
 
@@ -624,13 +592,39 @@ fn create_ui(platform: &mut Platform) -> FullOutput {
             ui.label("This panel is on the right side.");
 
             ui.vertical_centered(|ui| {
-                if ui.button("Hello").clicked() {
-                    println!("Hello");
+                // len - 1 because the last sphere is the floor sphere
+                for i in 0..screne_renderer.scene.spheres.len() - 1 {
+                    let current_sphere = &mut screne_renderer.scene.spheres[i];
+
+                    let sphere_position = &mut current_sphere.position;
+
+                    ui.label(format!("sphere {i} coordinates"));
+                    ui.horizontal(|ui| {
+                        //ui.set_max_width(100.0);
+                        ui.add(
+                            Slider::new(&mut sphere_position.x, -20.0..=20.0)
+                                .drag_value_speed(0.5)
+                                .show_value(false)
+                                .text("x"),
+                        );
+                        ui.add(
+                            Slider::new(&mut sphere_position.y, -20.0..=20.0)
+                                .drag_value_speed(0.5)
+                                .show_value(false)
+                                .text("y"),
+                        );
+                        ui.add(
+                            Slider::new(&mut sphere_position.z, -20.0..=20.0)
+                                .drag_value_speed(0.5)
+                                .show_value(false)
+                                .text("z"),
+                        );
+                    });
                 }
 
                 ui.add_space(5.0);
 
-                ui.checkbox(&mut false, "clickme");
+                ui.checkbox(&mut false, "Toggle light accumulation");
             });
         });
 
