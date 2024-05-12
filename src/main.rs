@@ -592,39 +592,66 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
             ui.label("This panel is on the right side.");
 
             ui.vertical_centered(|ui| {
+                ui.checkbox(&mut false, "Toggle light accumulation");
+
                 // len - 1 because the last sphere is the floor sphere
-                for i in 0..screne_renderer.scene.spheres.len() - 1 {
+                let sphere_count = screne_renderer.scene.spheres.len();
+                for i in 0..sphere_count {
                     let current_sphere = &mut screne_renderer.scene.spheres[i];
+                    let num = i + 1;
 
-                    let sphere_position = &mut current_sphere.position;
+                    if i < sphere_count - 1 {
+                        let sphere_position = &mut current_sphere.position;
 
-                    ui.label(format!("sphere {i} coordinates"));
+                        ui.label(format!("sphere {num} coordinates"));
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                Slider::new(&mut sphere_position.x, -10.0..=10.0)
+                                    .drag_value_speed(0.5)
+                                    .show_value(false)
+                                    .text("x"),
+                            );
+                            ui.add(
+                                Slider::new(&mut sphere_position.y, -10.0..=0.0)
+                                    .drag_value_speed(0.5)
+                                    .show_value(false)
+                                    .text("y"),
+                            );
+                            ui.add(
+                                Slider::new(&mut sphere_position.z, -10.0..=10.0)
+                                    .drag_value_speed(0.5)
+                                    .show_value(false)
+                                    .text("z"),
+                            );
+                        });
+                    }
+
+                    let sphere_color = &mut current_sphere.material.albedo;
+
+                    ui.label(format!("sphere {num} color values"));
                     ui.horizontal(|ui| {
-                        //ui.set_max_width(100.0);
                         ui.add(
-                            Slider::new(&mut sphere_position.x, -20.0..=20.0)
-                                .drag_value_speed(0.5)
+                            Slider::new(&mut sphere_color.x, 0.0..=1.0)
+                                .drag_value_speed(0.05)
                                 .show_value(false)
-                                .text("x"),
+                                .text("r"),
                         );
                         ui.add(
-                            Slider::new(&mut sphere_position.y, -20.0..=20.0)
-                                .drag_value_speed(0.5)
+                            Slider::new(&mut sphere_color.y, 0.0..=1.0)
+                                .drag_value_speed(0.05)
                                 .show_value(false)
-                                .text("y"),
+                                .text("g"),
                         );
                         ui.add(
-                            Slider::new(&mut sphere_position.z, -20.0..=20.0)
-                                .drag_value_speed(0.5)
+                            Slider::new(&mut sphere_color.z, 0.0..=1.0)
+                                .drag_value_speed(0.05)
                                 .show_value(false)
-                                .text("z"),
+                                .text("b"),
                         );
                     });
+
+                    ui.add_space(15.0);
                 }
-
-                ui.add_space(5.0);
-
-                ui.checkbox(&mut false, "Toggle light accumulation");
             });
         });
 
