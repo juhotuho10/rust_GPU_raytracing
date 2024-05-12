@@ -112,11 +112,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         materials,
     };
 
-    let mut scene_renderer: Renderer = Renderer {
-        camera,
-        scene,
-        light_accumulation: false,
-    };
+    let mut scene_renderer = Renderer::new(camera, scene);
 
     let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
 
@@ -606,10 +602,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
             ui.label("This panel is on the right side.");
 
             ui.vertical_centered(|ui| {
-                ui.checkbox(
-                    &mut screne_renderer.light_accumulation,
-                    "light accumulation",
-                );
+                ui.checkbox(&mut screne_renderer.accumulate, "light accumulation");
 
                 // len - 1 because the last sphere is the floor sphere
                 let sphere_count = screne_renderer.scene.spheres.len();

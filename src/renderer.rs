@@ -1,3 +1,6 @@
+use std::ops::Index;
+use std::sync::Mutex;
+
 use crate::Scene::Sphere;
 
 use super::camera::{Camera, Ray};
@@ -20,36 +23,82 @@ struct HitPayload {
     object_index: usize,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub struct Renderer {
     pub camera: Camera,
     pub scene: RenderScene,
-    pub light_accumulation: bool,
+    pub accumulate: bool,
+    accumulated_image: Mutex<Vec<Vec3A>>,
+    accumulation_index: f32,
+}
+
+impl Clone for Renderer {
+    fn clone(&self) -> Self {
+        Renderer {
+            camera: self.camera.clone(),
+            scene: self.scene.clone(),
+            accumulate: self.accumulate,
+            accumulated_image: Mutex::new(match self.accumulated_image.lock() {
+                Ok(guard) => guard.clone(),
+                Err(poisoned) => poisoned.into_inner().clone(),
+            }),
+            accumulation_index: self.accumulation_index,
+        }
+    }
 }
 
 impl Renderer {
+    pub fn new(camera: Camera, scene: RenderScene) -> Renderer {
+        let mut renderer = Renderer {
+            camera,
+            scene,
+            accumulate: true,
+            accumulated_image: Mutex::new(vec![]),
+            accumulation_index: 1.0,
+        };
+
+        renderer.reset_accumulation();
+
+        renderer
+    }
+
     pub fn generate_pixels(
-        &self,
+        &mut self,
         rng: &mut rand::rngs::ThreadRng,
         thread_pool: &rayon::ThreadPool,
     ) -> Vec<u8> {
         let ray_directions = &self.camera.ray_directions;
 
-        let mut pixel_colors: Vec<u8> = Vec::with_capacity(ray_directions.len() * 4);
+        let mut pixel_rgba: Vec<u8> = Vec::with_capacity(ray_directions.len() * 4);
 
         let n_bounces = 4;
 
         thread_pool.install(|| {
-            pixel_colors = (0..ray_directions.len())
+            pixel_rgba = (0..ray_directions.len())
                 .into_par_iter()
-                .flat_map_iter(|index| {
-                    let color_rgba = self.per_pixel(index, n_bounces);
+                .flat_map_iter(|index: usize| {
+                    let color: Vec3A = self.per_pixel(index, n_bounces);
 
-                    color_rgba.into_iter()
+                    let accumulated_color: Vec3A;
+                    {
+                        let mut img = self.accumulated_image.lock().expect("couldn't mutex lock");
+                        img[index] += color;
+                        accumulated_color = img[index];
+                    }
+
+                    let mean_color = accumulated_color / self.accumulation_index;
+                    self.to_rgba(mean_color)
                 })
                 .collect();
         });
-        pixel_colors
+
+        if self.accumulate {
+            self.accumulation_index += 1.0;
+        } else {
+            self.reset_accumulation();
+        }
+
+        pixel_rgba
     }
 
     // single threadded version of the rendering for testing
@@ -139,7 +188,7 @@ impl Renderer {
         }
     }
 
-    fn per_pixel(&self, index: usize, bounces: u8) -> [u8; 4] {
+    fn per_pixel(&self, index: usize, bounces: u8) -> Vec3A {
         let mut ray = self.camera.ray_directions[index];
         let mut multiplier = 1.0;
         let mut final_color = Vec3A::splat(0.);
@@ -148,7 +197,7 @@ impl Renderer {
         let mut random_scatter: Vec3A = rng.gen();
 
         for i in 0..bounces {
-            let hit_payload = self.trace_ray(&ray);
+            let hit_payload = &self.trace_ray(&ray);
 
             if hit_payload.hit_distance < 0. {
                 // missed sphere
@@ -163,9 +212,9 @@ impl Renderer {
             let light_intensity = hit_payload.world_normal.dot(-light_direction).max(0.05);
 
             let hit_idex = hit_payload.object_index;
-            let closest_sphere = self.scene.spheres[hit_idex];
+            let closest_sphere = &self.scene.spheres[hit_idex];
             let material_index = closest_sphere.material_index;
-            let current_material = self.scene.materials[material_index];
+            let current_material = &self.scene.materials[material_index];
 
             let mut sphere_color = current_material.albedo;
             sphere_color *= light_intensity;
@@ -188,7 +237,7 @@ impl Renderer {
             ray.direction = reflected_ray;
         }
 
-        self.to_rgba(final_color)
+        final_color
     }
 
     fn reflect_ray(&self, ray: Vec3A, normal: Vec3A) -> Vec3A {
@@ -202,6 +251,8 @@ impl Renderer {
 
     pub fn on_resize(&mut self, width: u32, height: u32) {
         self.camera.on_resize(width, height);
+
+        self.reset_accumulation()
     }
 
     pub fn on_update(
@@ -210,6 +261,17 @@ impl Renderer {
         timestep: &f32,
         egui_context: &Context,
     ) -> bool {
-        self.camera.on_update(mouse_delta, timestep, egui_context)
+        let moved = self.camera.on_update(mouse_delta, timestep, egui_context);
+        if moved {
+            self.reset_accumulation()
+        }
+        moved
+    }
+
+    pub fn reset_accumulation(&mut self) {
+        let total_size = (self.camera.viewport_height * self.camera.viewport_width) as usize;
+        self.accumulated_image = Mutex::new(vec![Vec3A::splat(0.0); total_size]);
+
+        self.accumulation_index = 1.0;
     }
 }
