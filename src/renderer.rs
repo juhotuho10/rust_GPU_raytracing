@@ -36,7 +36,7 @@ impl Renderer {
             pixel_colors = (0..ray_directions.len())
                 .into_par_iter()
                 .flat_map_iter(|index| {
-                    let color_rgba = self.per_pixel(index);
+                    let color_rgba = self.per_pixel(index, 2);
 
                     color_rgba.into_iter()
                 })
@@ -80,7 +80,7 @@ impl Renderer {
             //let t0 = (-b + discriminant.sqrt()) / (2. * a);
 
             let current_t = (-b - discriminant.sqrt()) / (2. * a);
-            if current_t < hit_distance && current_t > 0.0 {
+            if current_t > 0.0 && current_t < hit_distance {
                 hit_distance = current_t;
                 closest_sphere_index = Some(sphere_index);
             }
@@ -116,24 +116,44 @@ impl Renderer {
         }
     }
 
-    fn per_pixel(&self, index: usize) -> [u8; 4] {
-        let hit_payload = self.trace_ray(&self.camera.ray_directions[index]);
+    fn per_pixel(&self, index: usize, bounces: u8) -> [u8; 4] {
+        let mut ray = self.camera.ray_directions[index];
+        let mut multiplier = 1.0;
+        let mut final_color = Vec3A::splat(0.);
+        for i in 0..bounces {
+            let hit_payload = self.trace_ray(&ray);
 
-        if hit_payload.hit_distance < 0. {
-            // missed sphere
-            return self.to_rgba(vec3a(0., 0., 0.));
+            if hit_payload.hit_distance < 0. {
+                // missed sphere
+                let skycolor = vec3a(0., 0., 0.);
+                final_color += skycolor * multiplier;
+                break;
+            }
+
+            let light_direction = vec3a(1., 1., -1.).normalize();
+            //cosine of the angle between hitpoin and the light direction
+            //min light intenstiy is 0.05
+            let light_intensity = hit_payload.world_normal.dot(-light_direction).max(0.05);
+
+            let hit_idex = hit_payload.object_index;
+            let closest_sphere = self.scene.spheres[hit_idex];
+            let mut sphere_color = closest_sphere.albedo;
+            sphere_color *= light_intensity;
+
+            final_color += sphere_color * multiplier;
+
+            multiplier *= 0.7;
+
+            // move new ray origin to the position of the hit
+            // move a little bit towards he normal so that the ray isnt cast from within the wall
+            ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
+
+            let reflected_ray = ray.direction
+                - (2.0 * ray.direction.dot(hit_payload.world_normal) * hit_payload.world_normal);
+            ray.direction = reflected_ray;
         }
 
-        let light_direction = vec3a(1., 1., -1.).normalize();
-        //cosine of the angle between hitpoin and the light direction
-        //min light intenstiy is 0.05
-        let light_intensity = hit_payload.world_normal.dot(-light_direction).max(0.05);
-
-        let hit_idex = hit_payload.object_index;
-        let closest_sphere = &self.scene.spheres[hit_idex];
-        let color = closest_sphere.albedo * light_intensity;
-
-        self.to_rgba(color)
+        self.to_rgba(final_color)
     }
 
     fn to_rgba(&self, mut vector: Vec3A) -> [u8; 4] {
