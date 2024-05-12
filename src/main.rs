@@ -75,13 +75,19 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     };
 
     let sphere_c: Sphere = Sphere {
-        position: vec3a(-2., 0.5, 4.),
+        position: vec3a(-2., -0.5, 4.),
         radius: 1.0,
         albedo: vec3a(0.9, 0.9, 0.4),
     };
 
+    let floor: Sphere = Sphere {
+        position: vec3a(0., 101., 0.),
+        radius: 100.,
+        albedo: vec3a(0.2, 0.3, 1.),
+    };
+
     let scene: RenderScene = RenderScene {
-        spheres: vec![sphere_a, sphere_b, sphere_c],
+        spheres: vec![sphere_a, sphere_b, sphere_c, floor],
     };
 
     let mut scene_renderer: Renderer = Renderer { camera, scene };
