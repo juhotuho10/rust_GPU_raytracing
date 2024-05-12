@@ -24,6 +24,7 @@ struct HitPayload {
 pub struct Renderer {
     pub camera: Camera,
     pub scene: RenderScene,
+    pub light_accumulation: bool,
 }
 
 impl Renderer {
@@ -36,11 +37,13 @@ impl Renderer {
 
         let mut pixel_colors: Vec<u8> = Vec::with_capacity(ray_directions.len() * 4);
 
+        let n_bounces = 2;
+
         thread_pool.install(|| {
             pixel_colors = (0..ray_directions.len())
                 .into_par_iter()
                 .flat_map_iter(|index| {
-                    let color_rgba = self.per_pixel(index, 2);
+                    let color_rgba = self.per_pixel(index, n_bounces);
 
                     color_rgba.into_iter()
                 })
@@ -149,7 +152,7 @@ impl Renderer {
 
             if hit_payload.hit_distance < 0. {
                 // missed sphere
-                let skycolor = vec3a(0., 0., 0.);
+                let skycolor = vec3a(0.6, 0.7, 0.9);
                 final_color += skycolor * multiplier;
                 break;
             }

@@ -5,7 +5,7 @@ mod renderer;
 use camera::Camera;
 use Scene::{Material, RenderScene, Sphere};
 
-use egui::{pos2, DragValue, Frame, FullOutput, Slider};
+use egui::{color_picker::color_edit_button_rgb, pos2, DragValue, Frame, FullOutput, Slider};
 use rand::{seq::index, thread_rng, Rng};
 use rayon::{prelude::*, ThreadPoolBuilder};
 use renderer::Renderer;
@@ -67,7 +67,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let camera = Camera::new(size.width, size.height);
 
     let sphere_a: Sphere = Sphere {
-        position: vec3a(0., 0., 0.),
+        position: vec3a(0., -1., 0.),
         radius: 0.5,
 
         material: Material {
@@ -78,7 +78,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     };
 
     let sphere_b: Sphere = Sphere {
-        position: vec3a(-3., -1.0, 3.),
+        position: vec3a(-3., -2.0, 3.),
         radius: 2.0,
 
         material: Material {
@@ -89,7 +89,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     };
 
     let floor: Sphere = Sphere {
-        position: vec3a(0., 501., 0.),
+        position: vec3a(0., 500., 0.),
         radius: 500.,
 
         material: Material {
@@ -103,7 +103,11 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         spheres: vec![sphere_a, sphere_b, floor],
     };
 
-    let mut scene_renderer: Renderer = Renderer { camera, scene };
+    let mut scene_renderer: Renderer = Renderer {
+        camera,
+        scene,
+        light_accumulation: false,
+    };
 
     let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
 
@@ -588,11 +592,15 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
         .resizable(false)
         .frame(transparent_frame)
         .show(&egui_context, |ui| {
-            ui.heading("Hello, world!");
+            ui.set_max_width(100.0);
+
             ui.label("This panel is on the right side.");
 
             ui.vertical_centered(|ui| {
-                ui.checkbox(&mut false, "Toggle light accumulation");
+                ui.checkbox(
+                    &mut screne_renderer.light_accumulation,
+                    "light accumulation",
+                );
 
                 // len - 1 because the last sphere is the floor sphere
                 let sphere_count = screne_renderer.scene.spheres.len();
@@ -608,10 +616,11 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                         ui.label("floor values".to_string());
                     }
 
+                    // X Y Z sliders
                     if !floor_sphere {
                         let sphere_position = &mut current_sphere.position;
 
-                        ui.horizontal_top(|ui| {
+                        ui.horizontal(|ui| {
                             ui.add(
                                 DragValue::new(&mut sphere_position.x)
                                     .speed(0.1)
@@ -634,31 +643,15 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                         });
                     }
 
-                    let sphere_color = &mut current_sphere.material.albedo;
-
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            DragValue::new(&mut sphere_color.x)
-                                .speed(0.01)
-                                .clamp_range(0.0..=1.0)
-                                .prefix("R: "),
-                        );
-
-                        ui.add(
-                            DragValue::new(&mut sphere_color.y)
-                                .speed(0.01)
-                                .clamp_range(0.0..=1.0)
-                                .prefix("G: "),
-                        );
-                        ui.add(
-                            DragValue::new(&mut sphere_color.z)
-                                .speed(0.01)
-                                .clamp_range(0.0..=1.0)
-                                .prefix("B: "),
-                        );
-                    });
-
+                    // sliders for radius, roughness and metallic
                     ui.vertical_centered_justified(|ui| {
+                        let sphere_color = &mut current_sphere.material.albedo;
+                        let mut color: [f32; 3] = (*sphere_color).into();
+                        ui.color_edit_button_rgb(&mut color);
+
+                        let new_color: Vec3A = color.into();
+                        current_sphere.material.albedo = new_color;
+
                         if !floor_sphere {
                             let sphere_radius = &mut current_sphere.radius;
 
@@ -672,7 +665,6 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
 
                         let sphere_roughness = &mut current_sphere.material.roughness;
 
-                        // Using DragValue for roughness
                         ui.add(
                             DragValue::new(sphere_roughness)
                                 .speed(0.01)
@@ -681,7 +673,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                         );
 
                         let sphere_metallic = &mut current_sphere.material.metallic;
-                        // Using DragValue for metallic
+
                         ui.add(
                             DragValue::new(sphere_metallic)
                                 .speed(0.01)
