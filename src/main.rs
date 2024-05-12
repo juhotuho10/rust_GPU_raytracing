@@ -5,7 +5,7 @@ mod renderer;
 use camera::Camera;
 use Scene::{Material, RenderScene, Sphere};
 
-use egui::{pos2, Frame, FullOutput, Slider};
+use egui::{pos2, DragValue, Frame, FullOutput, Slider};
 use rand::{seq::index, thread_rng, Rng};
 use rayon::{prelude::*, ThreadPoolBuilder};
 use renderer::Renderer;
@@ -597,56 +597,96 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                 // len - 1 because the last sphere is the floor sphere
                 let sphere_count = screne_renderer.scene.spheres.len();
                 for i in 0..sphere_count {
+                    let floor_sphere = i == (sphere_count - 1);
+
                     let current_sphere = &mut screne_renderer.scene.spheres[i];
                     let num = i + 1;
 
-                    if i < sphere_count - 1 {
+                    if !floor_sphere {
+                        ui.label(format!("sphere {num} values"));
+                    } else {
+                        ui.label("floor values".to_string());
+                    }
+
+                    if !floor_sphere {
                         let sphere_position = &mut current_sphere.position;
 
-                        ui.label(format!("sphere {num} coordinates"));
-                        ui.horizontal(|ui| {
+                        ui.horizontal_top(|ui| {
                             ui.add(
-                                Slider::new(&mut sphere_position.x, -10.0..=10.0)
-                                    .drag_value_speed(0.5)
-                                    .show_value(false)
-                                    .text("x"),
+                                DragValue::new(&mut sphere_position.x)
+                                    .speed(0.1)
+                                    .clamp_range(-10.0..=10.0)
+                                    .prefix("X: "),
+                            );
+
+                            ui.add(
+                                DragValue::new(&mut sphere_position.y)
+                                    .speed(0.1)
+                                    .clamp_range(-10.0..=0.0)
+                                    .prefix("Y: "),
                             );
                             ui.add(
-                                Slider::new(&mut sphere_position.y, -10.0..=0.0)
-                                    .drag_value_speed(0.5)
-                                    .show_value(false)
-                                    .text("y"),
-                            );
-                            ui.add(
-                                Slider::new(&mut sphere_position.z, -10.0..=10.0)
-                                    .drag_value_speed(0.5)
-                                    .show_value(false)
-                                    .text("z"),
+                                DragValue::new(&mut sphere_position.z)
+                                    .speed(0.1)
+                                    .clamp_range(-10.0..=10.0)
+                                    .prefix("Z: "),
                             );
                         });
                     }
 
                     let sphere_color = &mut current_sphere.material.albedo;
 
-                    ui.label(format!("sphere {num} color values"));
                     ui.horizontal(|ui| {
                         ui.add(
-                            Slider::new(&mut sphere_color.x, 0.0..=1.0)
-                                .drag_value_speed(0.05)
-                                .show_value(false)
-                                .text("r"),
+                            DragValue::new(&mut sphere_color.x)
+                                .speed(0.01)
+                                .clamp_range(0.0..=1.0)
+                                .prefix("R: "),
+                        );
+
+                        ui.add(
+                            DragValue::new(&mut sphere_color.y)
+                                .speed(0.01)
+                                .clamp_range(0.0..=1.0)
+                                .prefix("G: "),
                         );
                         ui.add(
-                            Slider::new(&mut sphere_color.y, 0.0..=1.0)
-                                .drag_value_speed(0.05)
-                                .show_value(false)
-                                .text("g"),
+                            DragValue::new(&mut sphere_color.z)
+                                .speed(0.01)
+                                .clamp_range(0.0..=1.0)
+                                .prefix("B: "),
                         );
+                    });
+
+                    ui.vertical_centered_justified(|ui| {
+                        if !floor_sphere {
+                            let sphere_radius = &mut current_sphere.radius;
+
+                            ui.add(
+                                DragValue::new(sphere_radius)
+                                    .speed(0.01)
+                                    .clamp_range(0.1..=10.0)
+                                    .prefix("radius: "),
+                            );
+                        }
+
+                        let sphere_roughness = &mut current_sphere.material.roughness;
+
+                        // Using DragValue for roughness
                         ui.add(
-                            Slider::new(&mut sphere_color.z, 0.0..=1.0)
-                                .drag_value_speed(0.05)
-                                .show_value(false)
-                                .text("b"),
+                            DragValue::new(sphere_roughness)
+                                .speed(0.01)
+                                .clamp_range(0.0..=1.0)
+                                .prefix("roughness: "),
+                        );
+
+                        let sphere_metallic = &mut current_sphere.material.metallic;
+                        // Using DragValue for metallic
+                        ui.add(
+                            DragValue::new(sphere_metallic)
+                                .speed(0.01)
+                                .clamp_range(0.0..=1.0)
+                                .prefix("metallic: "),
                         );
                     });
 
