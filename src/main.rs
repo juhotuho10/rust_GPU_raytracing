@@ -1,11 +1,15 @@
 mod Scene;
 mod camera;
+mod renderer;
 
 use camera::{Camera, Ray};
+use Scene::{RenderScene, Sphere};
+
 use egui::{pos2, Frame, FullOutput};
 use rand::{seq::index, thread_rng, Rng};
 use rayon::{prelude::*, ThreadPoolBuilder};
-use std::{borrow::Cow, time};
+use renderer::Renderer;
+use std::{borrow::Cow, env::current_exe, time};
 use wgpu::{
     Adapter, BindGroup, Device, PipelineLayout, Queue, Surface, TextureDescriptor,
     TextureDimension, TextureFormat, TextureUsages,
@@ -17,7 +21,6 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
     window::{CursorGrabMode, Window},
 };
-use Scene::{RenderScene, Sphere};
 
 use egui_wgpu_backend::{RenderPass as EguiRenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
@@ -80,6 +83,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let scene: RenderScene = RenderScene {
         spheres: vec![sphere_a, sphere_b, sphere_c],
     };
+
+    let mut scene_renderer: Renderer = Renderer { camera, scene };
 
     let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
 
@@ -179,7 +184,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             mouse_resting_position =
                                 egui::pos2(size.width as f32 / 2., size.height as f32 / 2.);
 
-                            camera.on_resize(size.width, size.height);
+                            scene_renderer.on_resize(size.width, size.height);
 
                             texture = create_texture(&device, size);
 
@@ -278,7 +283,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 });
 
                             let pixel_colors =
-                                generate_pixels(&device, &scene, &camera, &mut rng, &thread_pool);
+                                scene_renderer.generate_pixels(&mut rng, &thread_pool);
 
                             update_render_queue(&queue, &texture, &size, &pixel_colors);
 
@@ -328,7 +333,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 let delta = (current_mouse_pos - mouse_resting_position)
                                     .clamp(egui::vec2(-20., -20.), egui::vec2(20., 20.));
 
-                                let moved = camera.on_update(delta, &elapsed, &platform.context());
+                                let moved =
+                                    scene_renderer.on_update(delta, &elapsed, &platform.context());
 
                                 window
                                     .set_cursor_position(PhysicalPosition::new(
@@ -357,9 +363,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         .unwrap();
 }
 
-//#[allow(unused_variables)]
 //fn generate_pixels(
-//    device: &wgpu::Device,
 //    camera: &Camera,
 //    rng: &mut rand::rngs::ThreadRng,
 //) -> Vec<u8> {
@@ -381,34 +385,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 //    }
 //    pixel_colors
 //}
-
-#[allow(unused_variables)]
-fn generate_pixels(
-    device: &wgpu::Device,
-    scene: &RenderScene,
-    camera: &Camera,
-    rng: &mut rand::rngs::ThreadRng,
-    thread_pool: &rayon::ThreadPool,
-) -> Vec<u8> {
-    let camera_pos = camera.position;
-    let ray_directions = &camera.ray_directions;
-
-    let mut pixel_colors: Vec<u8> = Vec::with_capacity(ray_directions.len() * 4);
-
-    thread_pool.install(|| {
-        pixel_colors = (0..ray_directions.len())
-            .into_par_iter()
-            .flat_map_iter(|index| {
-                let color = trace_ray(scene, &ray_directions[index]);
-
-                let color_rgba = to_rgba(color);
-
-                color_rgba.into_iter()
-            })
-            .collect();
-    });
-    pixel_colors
-}
 
 fn update_render_queue(
     queue: &wgpu::Queue,
@@ -634,73 +610,4 @@ fn create_ui(platform: &mut Platform) -> FullOutput {
         });
 
     egui_context.end_frame()
-}
-
-fn trace_ray(scene: &RenderScene, ray: &Ray) -> Vec3A {
-    // (bx^2 + by^2)t^2 + 2*(axbx + ayby)t + (ax^2 + by^2 - r^2) = 0
-    // where
-    // a = ray origin
-    // b = ray direction
-    // r = sphere radius
-    // t = hit distance
-
-    //dbg!(ray.direction);
-
-    let clear_color = vec3a(0., 0., 0.);
-
-    let mut hit_distance = f32::MAX;
-    let mut closest_sphere: Option<&Sphere> = None;
-
-    if scene.spheres.is_empty() {
-        return clear_color;
-    }
-
-    let a: f32 = ray.direction.dot(ray.direction);
-
-    for sphere in &scene.spheres {
-        let origin = ray.origin - sphere.position;
-
-        let b: f32 = 2.0 * ray.direction.dot(origin);
-        let c: f32 = origin.dot(origin) - (sphere.radius * sphere.radius);
-
-        // discriminant:
-        // b^2 - 4*a*c
-        let discriminant = b * b - 4. * a * c;
-
-        if discriminant < 0. {
-            // we missed the sphere
-            continue;
-        }
-        // (-b +- discriminant) / 2a
-        //let t0 = (-b + discriminant.sqrt()) / (2. * a);
-
-        let current_t = (-b - discriminant.sqrt()) / (2. * a);
-        if current_t < hit_distance {
-            hit_distance = current_t;
-            closest_sphere = Some(sphere);
-        }
-    }
-
-    match closest_sphere {
-        None => clear_color,
-        Some(closest_sphere) => {
-            let light_direction = vec3a(1., 1., -1.).normalize();
-
-            let origin = ray.origin - closest_sphere.position;
-            let hit_point = origin + ray.direction * hit_distance;
-
-            let sphere_normal = hit_point.normalize();
-
-            // cosine of the angle between hitpoin and the light direction
-            // min light intenstiy is 0
-            let light_intensity = sphere_normal.dot(-light_direction).max(0.05);
-
-            closest_sphere.albedo * light_intensity
-        }
-    }
-}
-
-fn to_rgba(mut vector: Vec3A) -> [u8; 4] {
-    vector *= 255.0;
-    [vector.x as u8, vector.y as u8, vector.z as u8, 255]
 }
