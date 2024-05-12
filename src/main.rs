@@ -2,14 +2,14 @@ mod Scene;
 mod camera;
 mod renderer;
 
-use camera::{Camera, Ray};
-use Scene::{RenderScene, Sphere};
+use camera::Camera;
+use Scene::{Material, RenderScene, Sphere};
 
 use egui::{pos2, Frame, FullOutput};
 use rand::{seq::index, thread_rng, Rng};
 use rayon::{prelude::*, ThreadPoolBuilder};
 use renderer::Renderer;
-use std::{borrow::Cow, env::current_exe, time};
+use std::{borrow::Cow, time};
 use wgpu::{
     Adapter, BindGroup, Device, PipelineLayout, Queue, Surface, TextureDescriptor,
     TextureDimension, TextureFormat, TextureUsages,
@@ -60,30 +60,49 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let mut current_mouse_pos = mouse_resting_position;
 
-    let mut camera = Camera::new(size.width, size.height);
+    let camera = Camera::new(size.width, size.height);
 
     let sphere_a: Sphere = Sphere {
         position: vec3a(0., 0., 0.),
         radius: 0.5,
-        albedo: vec3a(1., 0., 1.),
+
+        material: Material {
+            albedo: vec3a(1., 0., 1.),
+            roughness: 1.0,
+            metallic: 0.0,
+        },
     };
 
     let sphere_b: Sphere = Sphere {
         position: vec3a(0.5, 0., 1.),
         radius: 0.2,
-        albedo: vec3a(0.1, 0.9, 0.7),
+        material: Material {
+            albedo: vec3a(0.1, 0.9, 0.7),
+            roughness: 1.0,
+            metallic: 0.0,
+        },
     };
 
     let sphere_c: Sphere = Sphere {
         position: vec3a(-2., -0.5, 4.),
         radius: 1.0,
-        albedo: vec3a(0.9, 0.9, 0.4),
+
+        material: Material {
+            albedo: vec3a(0.9, 0.9, 0.4),
+            roughness: 1.0,
+            metallic: 0.0,
+        },
     };
 
     let floor: Sphere = Sphere {
         position: vec3a(0., 101., 0.),
         radius: 100.,
-        albedo: vec3a(0.2, 0.3, 1.),
+
+        material: Material {
+            albedo: vec3a(0.2, 0.3, 1.),
+            roughness: 1.0,
+            metallic: 0.0,
+        },
     };
 
     let scene: RenderScene = RenderScene {

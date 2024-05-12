@@ -137,7 +137,7 @@ impl Renderer {
 
             let hit_idex = hit_payload.object_index;
             let closest_sphere = self.scene.spheres[hit_idex];
-            let mut sphere_color = closest_sphere.albedo;
+            let mut sphere_color = closest_sphere.material.albedo;
             sphere_color *= light_intensity;
 
             final_color += sphere_color * multiplier;
