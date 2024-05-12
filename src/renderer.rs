@@ -37,7 +37,7 @@ impl Renderer {
 
         let mut pixel_colors: Vec<u8> = Vec::with_capacity(ray_directions.len() * 4);
 
-        let n_bounces = 2;
+        let n_bounces = 4;
 
         thread_pool.install(|| {
             pixel_colors = (0..ray_directions.len())
@@ -164,7 +164,10 @@ impl Renderer {
 
             let hit_idex = hit_payload.object_index;
             let closest_sphere = self.scene.spheres[hit_idex];
-            let mut sphere_color = closest_sphere.material.albedo;
+            let material_index = closest_sphere.material_index;
+            let current_material = self.scene.materials[material_index];
+
+            let mut sphere_color = current_material.albedo;
             sphere_color *= light_intensity;
 
             final_color += sphere_color * multiplier;
@@ -180,7 +183,7 @@ impl Renderer {
 
             let reflected_ray: Vec3A = self.reflect_ray(
                 ray.direction,
-                hit_payload.world_normal + closest_sphere.material.roughness * random_scatter,
+                hit_payload.world_normal + current_material.roughness * random_scatter,
             );
             ray.direction = reflected_ray;
         }

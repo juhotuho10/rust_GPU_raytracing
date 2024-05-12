@@ -66,41 +66,50 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let camera = Camera::new(size.width, size.height);
 
+    let shiny_green = Material {
+        albedo: vec3a(0.1, 0.8, 0.4),
+        roughness: 0.3,
+        metallic: 0.7,
+    };
+
+    let rough_blue = Material {
+        albedo: vec3a(0.3, 0.2, 0.8),
+        roughness: 0.7,
+        metallic: 0.3,
+    };
+
+    let glossy_pink = Material {
+        albedo: vec3a(1.0, 0.1, 1.0),
+        roughness: 0.1,
+        metallic: 0.9,
+    };
+
+    let materials = vec![shiny_green, rough_blue, glossy_pink];
+
     let sphere_a: Sphere = Sphere {
         position: vec3a(0., -1., 0.),
         radius: 0.5,
 
-        material: Material {
-            albedo: vec3a(1., 0., 1.),
-            roughness: 1.0,
-            metallic: 0.0,
-        },
+        material_index: 2,
     };
 
     let sphere_b: Sphere = Sphere {
         position: vec3a(-3., -2.0, 3.),
         radius: 2.0,
 
-        material: Material {
-            albedo: vec3a(0.9, 0.9, 0.4),
-            roughness: 1.0,
-            metallic: 0.0,
-        },
+        material_index: 0,
     };
 
     let floor: Sphere = Sphere {
         position: vec3a(0., 500., 0.),
         radius: 500.,
 
-        material: Material {
-            albedo: vec3a(0.2, 0.3, 1.),
-            roughness: 1.0,
-            metallic: 0.0,
-        },
+        material_index: 1,
     };
 
     let scene: RenderScene = RenderScene {
         spheres: vec![sphere_a, sphere_b, floor],
+        materials,
     };
 
     let mut scene_renderer: Renderer = Renderer {
@@ -644,13 +653,16 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                     }
 
                     // sliders for radius, roughness and metallic
-                    ui.vertical_centered_justified(|ui| {
-                        let sphere_color = &mut current_sphere.material.albedo;
+                    ui.vertical_centered_justified(|ui: &mut egui::Ui| {
+                        let material_index = current_sphere.material_index;
+                        let current_material = &mut screne_renderer.scene.materials[material_index];
+
+                        let sphere_color = &mut current_material.albedo;
                         let mut color: [f32; 3] = (*sphere_color).into();
                         ui.color_edit_button_rgb(&mut color);
 
                         let new_color: Vec3A = color.into();
-                        current_sphere.material.albedo = new_color;
+                        current_material.albedo = new_color;
 
                         if !floor_sphere {
                             let sphere_radius = &mut current_sphere.radius;
@@ -663,7 +675,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                             );
                         }
 
-                        let sphere_roughness = &mut current_sphere.material.roughness;
+                        let sphere_roughness = &mut current_material.roughness;
 
                         ui.add(
                             DragValue::new(sphere_roughness)
@@ -672,7 +684,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                                 .prefix("roughness: "),
                         );
 
-                        let sphere_metallic = &mut current_sphere.material.metallic;
+                        let sphere_metallic = &mut current_material.metallic;
 
                         ui.add(
                             DragValue::new(sphere_metallic)
