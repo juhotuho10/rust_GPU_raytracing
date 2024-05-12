@@ -1,3 +1,5 @@
+use crate::Scene::Sphere;
+
 use super::camera::{Camera, Ray};
 use super::Scene::RenderScene;
 
@@ -5,6 +7,8 @@ use egui::Context;
 
 use glam::{vec3a, Vec3A};
 
+use rand::distributions::{Distribution, Uniform};
+use rand::Rng;
 use rayon::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -120,6 +124,8 @@ impl Renderer {
         let mut ray = self.camera.ray_directions[index];
         let mut multiplier = 1.0;
         let mut final_color = Vec3A::splat(0.);
+        let mut rng = rand::thread_rng();
+
         for i in 0..bounces {
             let hit_payload = self.trace_ray(&ray);
 
@@ -148,12 +154,23 @@ impl Renderer {
             // move a little bit towards he normal so that the ray isnt cast from within the wall
             ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
 
-            let reflected_ray = ray.direction
-                - (2.0 * ray.direction.dot(hit_payload.world_normal) * hit_payload.world_normal);
+            let mut random_scatter: Vec3A = rng.gen();
+
+            // scale random values between -0.5 and 0.5
+            random_scatter -= 0.5;
+
+            let reflected_ray: Vec3A = self.reflect_ray(
+                ray.direction,
+                hit_payload.world_normal + closest_sphere.material.roughness * random_scatter,
+            );
             ray.direction = reflected_ray;
         }
 
         self.to_rgba(final_color)
+    }
+
+    fn reflect_ray(&self, ray: Vec3A, normal: Vec3A) -> Vec3A {
+        ray - (2.0 * ray.dot(normal) * normal)
     }
 
     fn to_rgba(&self, mut vector: Vec3A) -> [u8; 4] {

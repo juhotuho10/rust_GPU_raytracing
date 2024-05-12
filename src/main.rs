@@ -95,8 +95,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     };
 
     let floor: Sphere = Sphere {
-        position: vec3a(0., 101., 0.),
-        radius: 100.,
+        position: vec3a(0., 501., 0.),
+        radius: 500.,
 
         material: Material {
             albedo: vec3a(0.2, 0.3, 1.),
