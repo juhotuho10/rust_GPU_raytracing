@@ -5,7 +5,7 @@ mod renderer;
 use camera::Camera;
 use Scene::{Material, RenderScene, Sphere};
 
-use egui::{color_picker::color_edit_button_rgb, pos2, DragValue, Frame, FullOutput, Slider};
+use egui::{color_picker::color_edit_button_rgb, pos2, DragValue, Frame, FullOutput, Slider, Ui};
 use rand::{seq::index, thread_rng, Rng};
 use rayon::{prelude::*, ThreadPoolBuilder};
 use renderer::Renderer;
@@ -593,6 +593,8 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
 
     let transparent_frame = Frame::none().fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200));
 
+    let mut interacted = false;
+
     egui::SidePanel::right("side_panel")
         .resizable(false)
         .frame(transparent_frame)
@@ -623,25 +625,40 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                         let sphere_position = &mut current_sphere.position;
 
                         ui.horizontal(|ui| {
-                            ui.add(
-                                DragValue::new(&mut sphere_position.x)
-                                    .speed(0.1)
-                                    .clamp_range(-10.0..=10.0)
-                                    .prefix("X: "),
-                            );
+                            if ui
+                                .add(
+                                    DragValue::new(&mut sphere_position.x)
+                                        .speed(0.1)
+                                        .clamp_range(-10.0..=10.0)
+                                        .prefix("X: "),
+                                )
+                                .changed()
+                            {
+                                interacted = true;
+                            };
 
-                            ui.add(
-                                DragValue::new(&mut sphere_position.y)
-                                    .speed(0.1)
-                                    .clamp_range(-10.0..=0.0)
-                                    .prefix("Y: "),
-                            );
-                            ui.add(
-                                DragValue::new(&mut sphere_position.z)
-                                    .speed(0.1)
-                                    .clamp_range(-10.0..=10.0)
-                                    .prefix("Z: "),
-                            );
+                            if ui
+                                .add(
+                                    DragValue::new(&mut sphere_position.y)
+                                        .speed(0.1)
+                                        .clamp_range(-10.0..=0.0)
+                                        .prefix("Y: "),
+                                )
+                                .changed()
+                            {
+                                interacted = true;
+                            };
+                            if ui
+                                .add(
+                                    DragValue::new(&mut sphere_position.z)
+                                        .speed(0.1)
+                                        .clamp_range(-10.0..=10.0)
+                                        .prefix("Z: "),
+                                )
+                                .changed()
+                            {
+                                interacted = true;
+                            };
                         });
                     }
 
@@ -652,7 +669,10 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
 
                         let sphere_color = &mut current_material.albedo;
                         let mut color: [f32; 3] = (*sphere_color).into();
-                        ui.color_edit_button_rgb(&mut color);
+
+                        if ui.color_edit_button_rgb(&mut color).changed() {
+                            interacted = true;
+                        };
 
                         let new_color: Vec3A = color.into();
                         current_material.albedo = new_color;
@@ -660,37 +680,56 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                         if !floor_sphere {
                             let sphere_radius = &mut current_sphere.radius;
 
-                            ui.add(
-                                DragValue::new(sphere_radius)
-                                    .speed(0.01)
-                                    .clamp_range(0.1..=10.0)
-                                    .prefix("radius: "),
-                            );
+                            if ui
+                                .add(
+                                    DragValue::new(sphere_radius)
+                                        .speed(0.01)
+                                        .clamp_range(0.1..=10.0)
+                                        .prefix("radius: "),
+                                )
+                                .changed()
+                            {
+                                interacted = true;
+                            };
                         }
 
                         let sphere_roughness = &mut current_material.roughness;
 
-                        ui.add(
-                            DragValue::new(sphere_roughness)
-                                .speed(0.01)
-                                .clamp_range(0.0..=1.0)
-                                .prefix("roughness: "),
-                        );
+                        if ui
+                            .add(
+                                DragValue::new(sphere_roughness)
+                                    .speed(0.01)
+                                    .clamp_range(0.0..=1.0)
+                                    .prefix("roughness: "),
+                            )
+                            .changed()
+                        {
+                            interacted = true;
+                        };
 
                         let sphere_metallic = &mut current_material.metallic;
 
-                        ui.add(
-                            DragValue::new(sphere_metallic)
-                                .speed(0.01)
-                                .clamp_range(0.0..=1.0)
-                                .prefix("metallic: "),
-                        );
+                        if ui
+                            .add(
+                                DragValue::new(sphere_metallic)
+                                    .speed(0.01)
+                                    .clamp_range(0.0..=1.0)
+                                    .prefix("metallic: "),
+                            )
+                            .changed()
+                        {
+                            interacted = true;
+                        };
                     });
 
                     ui.add_space(15.0);
                 }
             });
         });
+
+    if interacted {
+        screne_renderer.reset_accumulation()
+    }
 
     egui_context.end_frame()
 }

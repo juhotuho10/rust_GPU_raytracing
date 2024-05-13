@@ -206,8 +206,8 @@ impl Renderer {
 
             let light_direction = vec3a(1., 1., -1.).normalize();
             //cosine of the angle between hitpoin and the light direction
-            //min light intenstiy is 0.05
-            let light_intensity = hit_payload.world_normal.dot(-light_direction).max(0.05);
+            //min light intenstiy is 0.00
+            let light_intensity = hit_payload.world_normal.dot(-light_direction).max(0.00);
 
             let hit_idex = hit_payload.object_index;
             let closest_sphere = &self.scene.spheres[hit_idex];
