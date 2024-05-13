@@ -5,7 +5,7 @@ mod renderer;
 use camera::Camera;
 use Scene::{Material, RenderScene, Sphere};
 
-use egui::{pos2, DragValue, Frame, FullOutput};
+use egui::{pos2, Color32, DragValue, Frame, FullOutput};
 
 use rayon::{prelude::*, ThreadPoolBuilder};
 use renderer::Renderer;
@@ -606,7 +606,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
     let egui_context = platform.context();
 
     let mut style = (*egui_context.style()).clone();
-    style.spacing.slider_width = 50.0;
+    style.visuals.override_text_color = Some(Color32::from_rgb(220, 220, 220));
     egui_context.set_style(style);
 
     let transparent_frame = Frame::none().fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200));
