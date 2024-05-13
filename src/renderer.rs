@@ -7,8 +7,6 @@ use egui::Context;
 
 use glam::{vec3a, Vec3A};
 
-use rand::distributions::{Distribution, Uniform};
-use rand::Rng;
 use rayon::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -59,11 +57,7 @@ impl Renderer {
         renderer
     }
 
-    pub fn generate_pixels(
-        &mut self,
-        rng: &mut rand::rngs::ThreadRng,
-        thread_pool: &rayon::ThreadPool,
-    ) -> Vec<u8> {
+    pub fn generate_pixels(&mut self, thread_pool: &rayon::ThreadPool) -> Vec<u8> {
         let ray_directions = &self.camera.ray_directions;
 
         let mut pixel_rgba: Vec<u8> = Vec::with_capacity(ray_directions.len() * 4);
@@ -190,9 +184,8 @@ impl Renderer {
         let mut ray = self.camera.ray_directions[index];
         let mut multiplier = 1.0;
         let mut final_color = Vec3A::splat(0.);
-        let mut rng = rand::thread_rng();
 
-        let mut random_scatter: Vec3A = rng.gen();
+        let mut seed = (index * (self.accumulation_index as usize)) as u32;
 
         for i in 0..bounces {
             let hit_payload = &self.trace_ray(&ray);
@@ -225,12 +218,10 @@ impl Renderer {
             // move a little bit towards he normal so that the ray isnt cast from within the wall
             ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
 
-            // scale random values between -0.5 and 0.5
-            random_scatter -= 0.5;
-
             let reflected_ray: Vec3A = self.reflect_ray(
                 ray.direction,
-                hit_payload.world_normal + current_material.roughness * random_scatter,
+                hit_payload.world_normal
+                    + current_material.roughness * self.random_scaler(&mut seed),
             );
             ray.direction = reflected_ray;
         }
@@ -265,5 +256,24 @@ impl Renderer {
         self.accumulated_image = vec![Vec3A::splat(0.0); total_size];
 
         self.accumulation_index = 1.0;
+    }
+
+    fn pcg_hash(&self, seed: &mut u32) -> f32 {
+        let state = *seed * 747796405u32 + 2891336453;
+        let word = ((state >> ((state >> 28) + 4)) ^ state) * 277803737;
+
+        *seed = (word >> 22) ^ word;
+
+        *seed as f32
+    }
+
+    fn random_scaler(&self, seed: &mut u32) -> Vec3A {
+        let scaler = vec3a(
+            self.pcg_hash(seed),
+            self.pcg_hash(seed),
+            self.pcg_hash(seed),
+        );
+
+        scaler / (u32::MAX as f32) * 2.0 - 1.0
     }
 }

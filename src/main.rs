@@ -6,7 +6,7 @@ use camera::Camera;
 use Scene::{Material, RenderScene, Sphere};
 
 use egui::{pos2, DragValue, Frame, FullOutput};
-use rand::{seq::index, thread_rng, Rng};
+
 use rayon::{prelude::*, ThreadPoolBuilder};
 use renderer::Renderer;
 use std::{borrow::Cow, time};
@@ -44,8 +44,6 @@ pub fn main() {
 }
 
 async fn run(event_loop: EventLoop<()>, window: Window) {
-    let mut rng = rand::thread_rng();
-
     let mut movement_mode = false;
 
     let available_threads = rayon::current_num_threads();
@@ -191,7 +189,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     match event {
                         WindowEvent::CursorMoved {
                             device_id: _,
-                            position,
+                            position: _,
                         } => {
                             window.request_redraw();
                         }
@@ -306,8 +304,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     label: None,
                                 });
 
-                            let pixel_colors =
-                                scene_renderer.generate_pixels(&mut rng, &thread_pool);
+                            let pixel_colors = scene_renderer.generate_pixels(&thread_pool);
 
                             update_render_queue(&queue, &texture, &size, &pixel_colors);
 
