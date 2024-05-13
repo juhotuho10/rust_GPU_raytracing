@@ -67,7 +67,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let shiny_green = Material {
         albedo: vec3a(0.1, 0.8, 0.4),
         roughness: 0.3,
-        metallic: 0.7,
+        metallic: 1.0,
         emission_color: vec3a(0.1, 0.8, 0.4),
         emission_power: 0.0,
     };
@@ -75,7 +75,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let rough_blue = Material {
         albedo: vec3a(0.3, 0.2, 0.8),
         roughness: 0.7,
-        metallic: 0.3,
+        metallic: 0.5,
         emission_color: vec3a(0.3, 0.2, 0.8),
         emission_power: 0.0,
     };
@@ -83,7 +83,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let glossy_pink = Material {
         albedo: vec3a(1.0, 0.1, 1.0),
         roughness: 0.4,
-        metallic: 0.9,
+        metallic: 0.8,
         emission_color: vec3a(1.0, 0.1, 1.0),
         emission_power: 0.0,
     };
@@ -91,7 +91,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let shiny_orange = Material {
         albedo: vec3a(1.0, 0.7, 0.0),
         roughness: 0.7,
-        metallic: 0.0,
+        metallic: 0.7,
         emission_color: vec3a(1.0, 0.7, 0.0),
         emission_power: 10.0,
     };

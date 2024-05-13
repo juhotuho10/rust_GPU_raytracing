@@ -196,9 +196,9 @@ impl Renderer {
             let material_index = closest_sphere.material_index;
             let current_material = &self.scene.materials[material_index];
 
-            light_contribution *= current_material.albedo;
-
             light += current_material.get_emission() * light_contribution;
+
+            light_contribution *= current_material.albedo * current_material.metallic;
 
             // move new ray origin to the position of the hit
             // move a little bit towards he normal so that the ray isnt cast from within the wall
