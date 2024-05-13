@@ -11,7 +11,8 @@ use rayon::{prelude::*, ThreadPoolBuilder};
 use renderer::Renderer;
 use std::{borrow::Cow, time};
 use wgpu::{
-    Adapter, BindGroup, Device, PipelineLayout, Queue, Surface, SurfaceConfiguration,
+    core::instance, Adapter, Backends, BindGroup, Device, Dx12Compiler, Gles3MinorVersion,
+    InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface, SurfaceConfiguration,
     TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
 use winit::{
@@ -144,6 +145,15 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let instance = wgpu::Instance::default();
 
+    let instance_desc: wgpu::InstanceDescriptor = InstanceDescriptor {
+        backends: Backends::VULKAN,
+        flags: InstanceFlags::default(),
+        dx12_shader_compiler: Dx12Compiler::default(),
+        gles_minor_version: Gles3MinorVersion::default(),
+    };
+
+    let instance = wgpu::Instance::new(instance_desc);
+
     let surface: Surface = instance.create_surface(&window).unwrap();
     let adapter = create_adapter(&instance, &surface).await;
     // Create the logical device and command queue
@@ -183,7 +193,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         present_mode: wgpu::PresentMode::Fifo,
         desired_maximum_frame_latency: 2,
         alpha_mode: wgpu::CompositeAlphaMode::Auto,
-        view_formats: vec![],
+        view_formats: vec![texture.format()],
     };
 
     surface.configure(&device, &surface_config);
@@ -477,6 +487,7 @@ fn create_texture(device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) ->
         dimension: TextureDimension::D2,
         format: TextureFormat::Rgba8UnormSrgb,
         usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+
         view_formats: &[],
     })
 }
@@ -511,7 +522,7 @@ fn setup_renderpass(
     render_pipeline: &wgpu::RenderPipeline,
     bind_group: &BindGroup,
 ) {
-    let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+    let mut rpass: wgpu::RenderPass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: None,
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
             view,
