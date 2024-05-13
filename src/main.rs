@@ -11,8 +11,8 @@ use rayon::{prelude::*, ThreadPoolBuilder};
 use renderer::Renderer;
 use std::{borrow::Cow, time};
 use wgpu::{
-    Adapter, BindGroup, Device, PipelineLayout, Queue, Surface, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages,
+    Adapter, BindGroup, Device, PipelineLayout, Queue, Surface, SurfaceConfiguration,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
@@ -43,27 +43,7 @@ pub fn main() {
     pollster::block_on(run(event_loop, window));
 }
 
-async fn run(event_loop: EventLoop<()>, window: Window) {
-    let mut movement_mode = false;
-
-    let available_threads = rayon::current_num_threads();
-    let used_threads = available_threads / 2;
-
-    let thread_pool = ThreadPoolBuilder::new()
-        .num_threads(used_threads)
-        .build()
-        .unwrap();
-
-    let mut size = window.inner_size();
-    size.width = size.width.max(1);
-    size.height = size.height.max(1);
-
-    let mut mouse_resting_position = egui::pos2(size.width as f32 / 2., size.height as f32 / 2.);
-
-    let mut current_mouse_pos = mouse_resting_position;
-
-    let camera = Camera::new(size.width, size.height);
-
+fn define_scene() -> RenderScene {
     let shiny_green = Material {
         albedo: vec3a(0.1, 0.8, 0.4),
         roughness: 0.3,
@@ -96,8 +76,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         emission_power: 10.0,
     };
 
-    let materials = vec![shiny_green, rough_blue, glossy_pink, shiny_orange];
-
     let sphere_a: Sphere = Sphere {
         position: vec3a(0., -1., 0.),
         radius: 0.5,
@@ -119,6 +97,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         material_index: 3,
     };
 
+    // sphere to act as a floor
     let floor: Sphere = Sphere {
         position: vec3a(0., 500., 0.),
         radius: 500.,
@@ -128,8 +107,34 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let scene: RenderScene = RenderScene {
         spheres: vec![sphere_a, sphere_b, shiny_sphere, floor],
-        materials,
+        materials: vec![shiny_green, rough_blue, glossy_pink, shiny_orange],
     };
+
+    scene
+}
+
+async fn run(event_loop: EventLoop<()>, window: Window) {
+    let mut movement_mode = false;
+
+    let available_threads = rayon::current_num_threads();
+    let used_threads = available_threads / 2;
+
+    let thread_pool = ThreadPoolBuilder::new()
+        .num_threads(used_threads)
+        .build()
+        .unwrap();
+
+    let mut size = window.inner_size();
+    size.width = size.width.max(1);
+    size.height = size.height.max(1);
+
+    let mut mouse_resting_position = egui::pos2(size.width as f32 / 2., size.height as f32 / 2.);
+
+    let mut current_mouse_pos = mouse_resting_position;
+
+    let camera = Camera::new(size.width, size.height);
+
+    let scene = define_scene();
 
     let mut scene_renderer = Renderer::new(camera, scene);
 
@@ -156,14 +161,30 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         push_constant_ranges: &[],
     });
 
-    let swapchain_capabilities = surface.get_capabilities(&adapter);
+    let render_pipeline = create_render_pipeline(&device, &pipeline_layout, texture.format());
 
-    let render_pipeline = create_render_pipeline(&device, &pipeline_layout, swapchain_capabilities);
+    //let mut surface_config = surface
+    //    .get_default_config(&adapter, size.width, size.height)
+    //    .unwrap();
 
-    let mut config = surface
-        .get_default_config(&adapter, size.width, size.height)
-        .unwrap();
-    surface.configure(&device, &config);
+    let adapter_capbilities = *surface
+        .get_capabilities(&adapter)
+        .formats
+        .first()
+        .expect("couldn't get format");
+
+    let mut surface_config = wgpu::SurfaceConfiguration {
+        usage: TextureUsages::RENDER_ATTACHMENT,
+        format: adapter_capbilities,
+        width: size.width,
+        height: size.height,
+        present_mode: wgpu::PresentMode::Fifo,
+        desired_maximum_frame_latency: 2,
+        alpha_mode: wgpu::CompositeAlphaMode::Auto,
+        view_formats: vec![],
+    };
+
+    surface.configure(&device, &surface_config);
 
     let window = &window;
 
@@ -185,7 +206,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         scale_factor: scale_factor as f32,
     };
 
-    let mut egui_rpass = EguiRenderPass::new(&device, config.format, 1);
+    let mut egui_rpass = EguiRenderPass::new(&device, surface_config.format, 1);
 
     /* ##############################################3################################# */
 
@@ -218,8 +239,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             size.width = new_size.width.max(1);
                             size.height = new_size.height.max(1);
 
-                            config.width = size.width;
-                            config.height = size.height;
+                            surface_config.width = size.width;
+                            surface_config.height = size.height;
 
                             screen_descriptor.physical_height = size.height;
                             screen_descriptor.physical_width = size.width;
@@ -238,7 +259,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 &sampler,
                             );
 
-                            surface.configure(&device, &config);
+                            surface.configure(&device, &surface_config);
                             // On macos the window needs to be redrawn manually after resizing
 
                             window.request_redraw();
@@ -394,10 +415,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     window.request_redraw();
                 } // Handle other types of events that are not window events
             }
-
-            // ######### rendering the egui ###########
-
-            window.request_redraw();
         })
         .unwrap();
 }
@@ -524,15 +541,13 @@ fn generate_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
 fn create_render_pipeline(
     device: &wgpu::Device,
     pipeline_layout: &PipelineLayout,
-    swapchain_capabilities: wgpu::SurfaceCapabilities,
+    swapchain_format: TextureFormat,
 ) -> wgpu::RenderPipeline {
     // Load the shaders from disk
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: None,
         source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader.wgsl"))),
     });
-
-    let swapchain_format = swapchain_capabilities.formats[0];
 
     let render_pipeline: wgpu::RenderPipeline =
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

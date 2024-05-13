@@ -268,10 +268,12 @@ impl Renderer {
     }
 
     fn pcg_hash(&self, seed: &mut u32) -> f32 {
-        let state = *seed * 747796405 + 2891336453;
-        let word = ((state >> ((state >> 28) + 4)) ^ state) * 277803737;
+        let state = seed.wrapping_mul(747796405).wrapping_add(2891336453);
 
-        *seed = (word >> 22) ^ word;
+        let word =
+            ((state.wrapping_shr((state.wrapping_shr(28)) + 4)) ^ state).wrapping_mul(277803737);
+
+        *seed = word.wrapping_shr(22) ^ word;
 
         *seed as f32
     }
