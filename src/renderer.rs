@@ -1,4 +1,6 @@
-use crate::Scene::Sphere;
+use std::fs::DirBuilder;
+
+use crate::Scene::{Material, Sphere};
 
 use super::camera::{Camera, Ray};
 use super::Scene::RenderScene;
@@ -8,6 +10,7 @@ use egui::Context;
 use glam::{vec3a, Vec3A};
 
 use rayon::prelude::*;
+use wgpu::hal::auxil::db;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct HitPayload {
@@ -23,6 +26,7 @@ pub struct Renderer {
     pub camera: Camera,
     pub scene: RenderScene,
     pub accumulate: bool,
+    pub light_mode: u32,
     accumulated_image: Vec<Vec3A>,
     accumulation_index: f32,
     frame_index: u32,
@@ -34,6 +38,7 @@ impl Renderer {
             camera,
             scene,
             accumulate: true,
+            light_mode: 0,
             accumulated_image: vec![],
             accumulation_index: 1.0,
             frame_index: 0,
@@ -160,7 +165,7 @@ impl Renderer {
         }
     }
 
-    fn miss(&self, ray: &Ray) -> HitPayload {
+    fn miss(&self, _ray: &Ray) -> HitPayload {
         HitPayload {
             hit_distance: -1.0,
             world_position: Vec3A::splat(0.),
@@ -171,8 +176,8 @@ impl Renderer {
 
     fn per_pixel(&self, index: usize, bounces: u8) -> Vec3A {
         let mut ray = self.camera.ray_directions[index];
-        let mut multiplier = 1.0;
-        let mut final_color = Vec3A::splat(0.);
+        let mut light_contribution = Vec3A::splat(1.0);
+        let mut light = Vec3A::splat(0.0);
 
         let mut seed = index as u32 * self.frame_index;
 
@@ -181,41 +186,55 @@ impl Renderer {
 
             if hit_payload.hit_distance < 0. {
                 // missed sphere
-                let skycolor = vec3a(0.6, 0.7, 0.9);
-                final_color += skycolor * multiplier;
+                //let sky_light = vec3a(0.6, 0.7, 0.9);
+                //light += sky_light * light_contribution;
                 break;
             }
-
-            let light_direction = vec3a(1., 1., -1.).normalize();
-            //cosine of the angle between hitpoin and the light direction
-            //min light intenstiy is 0.00
-            let light_intensity = hit_payload.world_normal.dot(-light_direction).max(0.00);
 
             let hit_idex = hit_payload.object_index;
             let closest_sphere = &self.scene.spheres[hit_idex];
             let material_index = closest_sphere.material_index;
             let current_material = &self.scene.materials[material_index];
 
-            let mut sphere_color = current_material.albedo;
-            sphere_color *= light_intensity;
-
-            final_color += sphere_color * multiplier;
-
-            multiplier *= 0.7;
+            light_contribution *= current_material.albedo;
+            light += current_material.get_emission() * light_contribution;
 
             // move new ray origin to the position of the hit
             // move a little bit towards he normal so that the ray isnt cast from within the wall
             ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
 
-            let reflected_ray: Vec3A = self.reflect_ray(
-                ray.direction,
-                hit_payload.world_normal
-                    + current_material.roughness * self.random_scaler(&mut seed),
-            );
-            ray.direction = reflected_ray;
+            match self.light_mode {
+                0 => {
+                    ray.direction = self
+                        .reflect_ray(
+                            ray.direction,
+                            hit_payload.world_normal
+                                + current_material.roughness * self.random_scaler(&mut seed),
+                        )
+                        .normalize();
+                }
+                1 => {
+                    ray.direction = (self.reflect_ray(ray.direction, hit_payload.world_normal)
+                        + current_material.roughness * self.random_scaler(&mut seed))
+                    .normalize();
+                }
+                2 => {
+                    ray.direction = (self.reflect_ray(ray.direction, hit_payload.world_normal)
+                        + ((hit_payload.world_normal + self.random_scaler(&mut seed))
+                            * current_material.roughness))
+                        .normalize()
+                }
+                3 => {
+                    ray.direction =
+                        (hit_payload.world_normal + self.random_scaler(&mut seed)).normalize()
+                }
+                _ => {
+                    unimplemented!("light mode doesnt exist")
+                }
+            }
         }
 
-        final_color
+        light
     }
 
     fn reflect_ray(&self, ray: Vec3A, normal: Vec3A) -> Vec3A {
@@ -248,7 +267,7 @@ impl Renderer {
     }
 
     fn pcg_hash(&self, seed: &mut u32) -> f32 {
-        let state = *seed * 747796405u32 + 2891336453;
+        let state = *seed * 747796405 + 2891336453;
         let word = ((state >> ((state >> 28) + 4)) ^ state) * 277803737;
 
         *seed = (word >> 22) ^ word;
@@ -257,12 +276,16 @@ impl Renderer {
     }
 
     fn random_scaler(&self, seed: &mut u32) -> Vec3A {
+        self.positive_random_scaler(seed) * 2.0 - 1.0
+    }
+
+    fn positive_random_scaler(&self, seed: &mut u32) -> Vec3A {
         let scaler = vec3a(
             self.pcg_hash(seed),
             self.pcg_hash(seed),
             self.pcg_hash(seed),
         );
 
-        scaler / (u32::MAX as f32) * 2.0 - 1.0
+        scaler / (u32::MAX as f32)
     }
 }

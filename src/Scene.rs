@@ -17,4 +17,12 @@ pub struct Material {
     pub albedo: Vec3A,
     pub roughness: f32,
     pub metallic: f32,
+    pub emission_color: Vec3A,
+    pub emission_power: f32,
+}
+
+impl Material {
+    pub fn get_emission(&self) -> Vec3A {
+        self.emission_color * self.emission_power
+    }
 }

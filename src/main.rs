@@ -33,7 +33,7 @@ pub fn main() {
 
     let builder = winit::window::WindowBuilder::new();
 
-    let window_size = PhysicalSize::new(1200, 600);
+    let window_size = PhysicalSize::new(1400, 700);
     let window = builder
         .with_inner_size(window_size)
         .build(&event_loop)
@@ -68,21 +68,35 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         albedo: vec3a(0.1, 0.8, 0.4),
         roughness: 0.3,
         metallic: 0.7,
+        emission_color: vec3a(0.1, 0.8, 0.4),
+        emission_power: 0.0,
     };
 
     let rough_blue = Material {
         albedo: vec3a(0.3, 0.2, 0.8),
         roughness: 0.7,
         metallic: 0.3,
+        emission_color: vec3a(0.3, 0.2, 0.8),
+        emission_power: 0.0,
     };
 
     let glossy_pink = Material {
         albedo: vec3a(1.0, 0.1, 1.0),
-        roughness: 0.1,
+        roughness: 0.4,
         metallic: 0.9,
+        emission_color: vec3a(1.0, 0.1, 1.0),
+        emission_power: 0.0,
     };
 
-    let materials = vec![shiny_green, rough_blue, glossy_pink];
+    let shiny_orange = Material {
+        albedo: vec3a(1.0, 0.7, 0.0),
+        roughness: 0.7,
+        metallic: 0.0,
+        emission_color: vec3a(1.0, 0.7, 0.0),
+        emission_power: 10.0,
+    };
+
+    let materials = vec![shiny_green, rough_blue, glossy_pink, shiny_orange];
 
     let sphere_a: Sphere = Sphere {
         position: vec3a(0., -1., 0.),
@@ -98,6 +112,13 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         material_index: 0,
     };
 
+    let shiny_sphere: Sphere = Sphere {
+        position: vec3a(3., -15.0, -5.),
+        radius: 7.0,
+
+        material_index: 3,
+    };
+
     let floor: Sphere = Sphere {
         position: vec3a(0., 500., 0.),
         radius: 500.,
@@ -106,7 +127,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     };
 
     let scene: RenderScene = RenderScene {
-        spheres: vec![sphere_a, sphere_b, floor],
+        spheres: vec![sphere_a, sphere_b, shiny_sphere, floor],
         materials,
     };
 
@@ -598,10 +619,20 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
         .show(&egui_context, |ui| {
             ui.set_max_width(100.0);
 
-            ui.label("This panel is on the right side.");
-
             ui.vertical_centered(|ui| {
                 ui.checkbox(&mut screne_renderer.accumulate, "light accumulation");
+
+                ui.label("light mode:");
+                if ui
+                    .add(
+                        egui::Slider::new(&mut screne_renderer.light_mode, 0..=3)
+                            .integer()
+                            .show_value(false),
+                    )
+                    .changed()
+                {
+                    interacted = true;
+                };
 
                 // len - 1 because the last sphere is the floor sphere
                 let sphere_count = screne_renderer.scene.spheres.len();
@@ -626,7 +657,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                                 .add(
                                     DragValue::new(&mut sphere_position.x)
                                         .speed(0.1)
-                                        .clamp_range(-10.0..=10.0)
+                                        .clamp_range(-100.0..=100.0)
                                         .prefix("X: "),
                                 )
                                 .changed()
@@ -638,7 +669,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                                 .add(
                                     DragValue::new(&mut sphere_position.y)
                                         .speed(0.1)
-                                        .clamp_range(-10.0..=0.0)
+                                        .clamp_range(-100.0..=0.0)
                                         .prefix("Y: "),
                                 )
                                 .changed()
@@ -649,7 +680,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                                 .add(
                                     DragValue::new(&mut sphere_position.z)
                                         .speed(0.1)
-                                        .clamp_range(-10.0..=10.0)
+                                        .clamp_range(-100.0..=100.0)
                                         .prefix("Z: "),
                                 )
                                 .changed()
@@ -667,12 +698,46 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                         let sphere_color = &mut current_material.albedo;
                         let mut color: [f32; 3] = (*sphere_color).into();
 
-                        if ui.color_edit_button_rgb(&mut color).changed() {
+                        let sphere_emission_color = &mut current_material.emission_color;
+                        let mut emission_color: [f32; 3] = (*sphere_emission_color).into();
+
+                        let emission_power = &mut current_material.emission_power;
+
+                        ui.horizontal(|ui| {
+                            if ui
+                                .color_edit_button_rgb(&mut color)
+                                .on_hover_text("color")
+                                .changed()
+                            {
+                                interacted = true;
+                            };
+
+                            if ui
+                                .color_edit_button_rgb(&mut emission_color)
+                                .on_hover_text("emission")
+                                .changed()
+                            {
+                                interacted = true;
+                            };
+                        });
+
+                        if ui
+                            .add(
+                                DragValue::new(emission_power)
+                                    .speed(0.2)
+                                    .clamp_range(0.0..=200.0)
+                                    .prefix("emission power: "),
+                            )
+                            .changed()
+                        {
                             interacted = true;
                         };
 
                         let new_color: Vec3A = color.into();
                         current_material.albedo = new_color;
+
+                        let new_emission_color: Vec3A = emission_color.into();
+                        current_material.emission_color = new_emission_color;
 
                         if !floor_sphere {
                             let sphere_radius = &mut current_sphere.radius;
@@ -681,7 +746,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                                 .add(
                                     DragValue::new(sphere_radius)
                                         .speed(0.01)
-                                        .clamp_range(0.1..=10.0)
+                                        .clamp_range(0.1..=30.0)
                                         .prefix("radius: "),
                                 )
                                 .changed()
