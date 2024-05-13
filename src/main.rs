@@ -18,7 +18,7 @@ use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, Event, KeyEvent, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    keyboard::{KeyCode, PhysicalKey},
+    keyboard::{Key, KeyCode, PhysicalKey},
     window::{CursorGrabMode, Window},
 };
 
@@ -131,6 +131,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut mouse_resting_position = egui::pos2(size.width as f32 / 2., size.height as f32 / 2.);
 
     let mut current_mouse_pos = mouse_resting_position;
+
+    let mut show_ui = true;
 
     let camera = Camera::new(size.width, size.height);
 
@@ -358,21 +360,28 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 .context()
                                 .tessellate(full_output.shapes, full_output.pixels_per_point);
                             // ######### Adding egui renderpass to the encoder ###########
-                            egui_rpass
-                                .add_textures(&device, &queue, &full_output.textures_delta)
-                                .expect("couldnt add textures");
+                            if show_ui {
+                                egui_rpass
+                                    .add_textures(&device, &queue, &full_output.textures_delta)
+                                    .expect("couldnt add textures");
 
-                            egui_rpass.update_buffers(
-                                &device,
-                                &queue,
-                                &paint_jobs,
-                                &screen_descriptor,
-                            );
+                                egui_rpass.update_buffers(
+                                    &device,
+                                    &queue,
+                                    &paint_jobs,
+                                    &screen_descriptor,
+                                );
 
-                            egui_rpass
-                                .execute(&mut encoder, &view, &paint_jobs, &screen_descriptor, None)
-                                .expect("egui render pass failed");
-
+                                egui_rpass
+                                    .execute(
+                                        &mut encoder,
+                                        &view,
+                                        &paint_jobs,
+                                        &screen_descriptor,
+                                        None,
+                                    )
+                                    .expect("egui render pass failed");
+                            }
                             // ######### rendering the queue ###########
                             queue.submit(Some(encoder.finish()));
 
@@ -403,6 +412,13 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                         mouse_resting_position.y,
                                     ))
                                     .expect("couldn't set cursor pos");
+                            }
+
+                            if platform
+                                .context()
+                                .input(|i: &egui::InputState| i.key_pressed(egui::Key::F11))
+                            {
+                                show_ui = !show_ui;
                             }
                         }
 
