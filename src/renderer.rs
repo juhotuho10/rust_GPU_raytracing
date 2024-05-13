@@ -1,6 +1,3 @@
-use std::ops::Index;
-use std::sync::Mutex;
-
 use crate::Scene::Sphere;
 
 use super::camera::{Camera, Ray};
@@ -28,24 +25,24 @@ pub struct Renderer {
     pub camera: Camera,
     pub scene: RenderScene,
     pub accumulate: bool,
-    accumulated_image: Mutex<Vec<Vec3A>>,
+    accumulated_image: Vec<Vec3A>,
     accumulation_index: f32,
 }
 
-impl Clone for Renderer {
-    fn clone(&self) -> Self {
-        Renderer {
-            camera: self.camera.clone(),
-            scene: self.scene.clone(),
-            accumulate: self.accumulate,
-            accumulated_image: Mutex::new(match self.accumulated_image.lock() {
-                Ok(guard) => guard.clone(),
-                Err(poisoned) => poisoned.into_inner().clone(),
-            }),
-            accumulation_index: self.accumulation_index,
-        }
-    }
-}
+//impl Clone for Renderer {
+//    fn clone(&self) -> Self {
+//        Renderer {
+//            camera: self.camera.clone(),
+//            scene: self.scene.clone(),
+//            accumulate: self.accumulate,
+//            accumulated_image: Mutex::new(match self.accumulated_image.lock() {
+//                Ok(guard) => guard.clone(),
+//                Err(poisoned) => poisoned.into_inner().clone(),
+//            }),
+//            accumulation_index: self.accumulation_index,
+//        }
+//    }
+//}
 
 impl Renderer {
     pub fn new(camera: Camera, scene: RenderScene) -> Renderer {
@@ -53,7 +50,7 @@ impl Renderer {
             camera,
             scene,
             accumulate: true,
-            accumulated_image: Mutex::new(vec![]),
+            accumulated_image: vec![],
             accumulation_index: 1.0,
         };
 
@@ -73,21 +70,22 @@ impl Renderer {
 
         let n_bounces = 4;
 
+        let new_colors: Vec<Vec3A> = (0..ray_directions.len())
+            .into_par_iter()
+            .map(|index| self.per_pixel(index, n_bounces))
+            .collect();
+
+        for (index, color) in new_colors.iter().enumerate() {
+            self.accumulated_image[index] += *color;
+        }
+
         thread_pool.install(|| {
             pixel_rgba = (0..ray_directions.len())
                 .into_par_iter()
                 .flat_map_iter(|index: usize| {
-                    let color: Vec3A = self.per_pixel(index, n_bounces);
+                    let normalized_color = self.accumulated_image[index] / self.accumulation_index;
 
-                    let accumulated_color: Vec3A;
-                    {
-                        let mut img = self.accumulated_image.lock().expect("couldn't mutex lock");
-                        img[index] += color;
-                        accumulated_color = img[index];
-                    }
-
-                    let mean_color = accumulated_color / self.accumulation_index;
-                    self.to_rgba(mean_color)
+                    self.to_rgba(normalized_color)
                 })
                 .collect();
         });
@@ -270,7 +268,7 @@ impl Renderer {
 
     pub fn reset_accumulation(&mut self) {
         let total_size = (self.camera.viewport_height * self.camera.viewport_width) as usize;
-        self.accumulated_image = Mutex::new(vec![Vec3A::splat(0.0); total_size]);
+        self.accumulated_image = vec![Vec3A::splat(0.0); total_size];
 
         self.accumulation_index = 1.0;
     }
