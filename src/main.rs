@@ -11,9 +11,9 @@ use rayon::{prelude::*, ThreadPoolBuilder};
 use renderer::Renderer;
 use std::{borrow::Cow, time};
 use wgpu::{
-    core::instance, Adapter, Backends, BindGroup, Device, Dx12Compiler, Gles3MinorVersion,
-    InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface, SurfaceConfiguration,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
+    Adapter, Backends, BindGroup, Device, Dx12Compiler, Gles3MinorVersion, InstanceDescriptor,
+    InstanceFlags, PipelineLayout, Queue, Surface, SurfaceConfiguration, TextureDescriptor,
+    TextureDimension, TextureFormat, TextureUsages,
 };
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
@@ -142,8 +142,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut scene_renderer = Renderer::new(camera, scene);
 
     let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
-
-    let instance = wgpu::Instance::default();
 
     let instance_desc: wgpu::InstanceDescriptor = InstanceDescriptor {
         backends: Backends::VULKAN,
@@ -620,7 +618,7 @@ async fn generate_device_and_queue(adapter: &Adapter) -> (Device, Queue) {
                 label: None,
                 required_features: wgpu::Features::empty(),
                 // Make sure we use the texture resolution limits from the adapter, so we can support images the size of the swapchain.
-                required_limits: wgpu::Limits::downlevel_webgl2_defaults()
+                required_limits: wgpu::Limits::downlevel_defaults()
                     .using_resolution(adapter.limits()),
             },
             None,
