@@ -253,17 +253,11 @@ impl Renderer {
         self.reset_accumulation()
     }
 
-    pub fn on_update(
-        &mut self,
-        mouse_delta: egui::Vec2,
-        timestep: &f32,
-        egui_context: &Context,
-    ) -> bool {
+    pub fn on_update(&mut self, mouse_delta: egui::Vec2, timestep: &f32, egui_context: &Context) {
         let moved = self.camera.on_update(mouse_delta, timestep, egui_context);
         if moved {
             self.reset_accumulation()
-        }
-        moved
+        };
     }
 
     pub fn reset_accumulation(&mut self) {

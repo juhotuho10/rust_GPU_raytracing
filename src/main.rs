@@ -5,17 +5,17 @@ mod renderer;
 use camera::Camera;
 use Scene::{Material, RenderScene, Sphere};
 
-use egui::{color_picker::color_edit_button_rgb, pos2, DragValue, Frame, FullOutput, Slider, Ui};
+use egui::{pos2, DragValue, Frame, FullOutput};
 use rand::{seq::index, thread_rng, Rng};
 use rayon::{prelude::*, ThreadPoolBuilder};
 use renderer::Renderer;
-use std::{borrow::Cow, fmt::format, time};
+use std::{borrow::Cow, time};
 use wgpu::{
     Adapter, BindGroup, Device, PipelineLayout, Queue, Surface, TextureDescriptor,
     TextureDimension, TextureFormat, TextureUsages,
 };
 use winit::{
-    dpi::{PhysicalPosition, PhysicalSize, Size},
+    dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, Event, KeyEvent, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
@@ -312,6 +312,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             update_render_queue(&queue, &texture, &size, &pixel_colors);
 
                             setup_renderpass(&mut encoder, &view, &render_pipeline, &bind_group);
+
                             let full_output = create_ui(&mut platform, &mut scene_renderer);
 
                             let paint_jobs = platform
@@ -355,8 +356,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 let delta = (current_mouse_pos - mouse_resting_position)
                                     .clamp(egui::vec2(-20., -20.), egui::vec2(20., 20.));
 
-                                let moved =
-                                    scene_renderer.on_update(delta, &elapsed, &platform.context());
+                                scene_renderer.on_update(delta, &elapsed, &platform.context());
 
                                 window
                                     .set_cursor_position(PhysicalPosition::new(
