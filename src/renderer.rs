@@ -185,9 +185,9 @@ impl Renderer {
             let hit_payload = &self.trace_ray(&ray);
 
             if hit_payload.hit_distance < 0. {
-                // missed sphere
-                //let sky_light = vec3a(0.6, 0.7, 0.9);
-                //light += sky_light * light_contribution;
+                // missed sphere, we het ambient color
+                let sky_light = vec3a(0., 0.04, 0.1);
+                light += sky_light * light_contribution;
                 break;
             }
 
@@ -197,6 +197,7 @@ impl Renderer {
             let current_material = &self.scene.materials[material_index];
 
             light_contribution *= current_material.albedo;
+
             light += current_material.get_emission() * light_contribution;
 
             // move new ray origin to the position of the hit
