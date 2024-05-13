@@ -25,22 +25,8 @@ pub struct Renderer {
     pub accumulate: bool,
     accumulated_image: Vec<Vec3A>,
     accumulation_index: f32,
+    frame_index: u32,
 }
-
-//impl Clone for Renderer {
-//    fn clone(&self) -> Self {
-//        Renderer {
-//            camera: self.camera.clone(),
-//            scene: self.scene.clone(),
-//            accumulate: self.accumulate,
-//            accumulated_image: Mutex::new(match self.accumulated_image.lock() {
-//                Ok(guard) => guard.clone(),
-//                Err(poisoned) => poisoned.into_inner().clone(),
-//            }),
-//            accumulation_index: self.accumulation_index,
-//        }
-//    }
-//}
 
 impl Renderer {
     pub fn new(camera: Camera, scene: RenderScene) -> Renderer {
@@ -50,6 +36,7 @@ impl Renderer {
             accumulate: true,
             accumulated_image: vec![],
             accumulation_index: 1.0,
+            frame_index: 0,
         };
 
         renderer.reset_accumulation();
@@ -89,6 +76,8 @@ impl Renderer {
         } else {
             self.reset_accumulation();
         }
+
+        self.frame_index += 1;
 
         pixel_rgba
     }
@@ -185,7 +174,7 @@ impl Renderer {
         let mut multiplier = 1.0;
         let mut final_color = Vec3A::splat(0.);
 
-        let mut seed = (index * (self.accumulation_index as usize)) as u32;
+        let mut seed = index as u32 * self.frame_index;
 
         for i in 0..bounces {
             let hit_payload = &self.trace_ray(&ray);
