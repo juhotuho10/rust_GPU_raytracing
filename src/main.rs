@@ -109,6 +109,7 @@ fn define_scene() -> RenderScene {
     let scene: RenderScene = RenderScene {
         spheres: vec![sphere_a, sphere_b, shiny_sphere, floor],
         materials: vec![shiny_green, rough_blue, glossy_pink, shiny_orange],
+        sky_color: vec3a(0., 0.04, 0.1),
     };
 
     scene
@@ -673,6 +674,20 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                 {
                     interacted = true;
                 };
+
+                let sky_color = screne_renderer.scene.sky_color;
+                let mut emission_power: [f32; 3] = sky_color.into();
+
+                ui.label("sky color:");
+                if ui
+                    .color_edit_button_rgb(&mut emission_power)
+                    .on_hover_text("color")
+                    .changed()
+                {
+                    interacted = true;
+                };
+
+                screne_renderer.scene.sky_color = emission_power.into();
 
                 // len - 1 because the last sphere is the floor sphere
                 let sphere_count = screne_renderer.scene.spheres.len();

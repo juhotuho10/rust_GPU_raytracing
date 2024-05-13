@@ -187,8 +187,8 @@ impl Renderer {
 
             if hit_payload.hit_distance < 0. {
                 // missed sphere, we het ambient color
-                let sky_light = vec3a(0., 0.04, 0.1);
-                light += sky_light * light_contribution;
+
+                light += self.scene.sky_color * light_contribution;
                 break;
             }
 

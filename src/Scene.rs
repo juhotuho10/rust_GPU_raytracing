@@ -4,6 +4,7 @@ use glam::Vec3A;
 pub struct RenderScene {
     pub spheres: Vec<Sphere>,
     pub materials: Vec<Material>,
+    pub sky_color: Vec3A,
 }
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Sphere {
