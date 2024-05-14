@@ -35,6 +35,7 @@ pub fn main() {
     let builder = winit::window::WindowBuilder::new();
 
     let window_size = PhysicalSize::new(1400, 700);
+
     let window = builder
         .with_inner_size(window_size)
         .build(&event_loop)
@@ -309,20 +310,17 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 window
                                     .set_cursor_grab(CursorGrabMode::Confined)
                                     .expect("couldn't confine cursor");
-                                window.set_cursor_visible(false);
-                                current_mouse_pos = platform
-                                    .context()
-                                    .input(|i: &egui::InputState| i.pointer.latest_pos())
-                                    .unwrap();
-                                last_mouse_pos = current_mouse_pos;
 
-                                window
-                                    .set_cursor_position(PhysicalPosition::new(
-                                        mouse_resting_position.x,
-                                        mouse_resting_position.y,
-                                    ))
-                                    .expect("couldn't set cursor pos");
+                                window.set_cursor_visible(false);
+
+                                last_mouse_pos = platform
+                                    .context()
+                                    .input(|i: &egui::InputState| i.pointer.hover_pos())
+                                    .unwrap();
+
                                 current_mouse_pos = mouse_resting_position;
+
+                                dbg!(current_mouse_pos);
 
                                 println!("cursor grabbed");
                                 window.request_redraw();
@@ -419,7 +417,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             if movement_mode {
                                 current_mouse_pos = platform
                                     .context()
-                                    .input(|i: &egui::InputState| i.pointer.latest_pos())
+                                    .input(|i: &egui::InputState| i.pointer.hover_pos())
                                     .unwrap();
 
                                 let delta = current_mouse_pos - mouse_resting_position;
