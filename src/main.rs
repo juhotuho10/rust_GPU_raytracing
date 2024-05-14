@@ -320,8 +320,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                                 current_mouse_pos = mouse_resting_position;
 
-                                dbg!(current_mouse_pos);
-
                                 println!("cursor grabbed");
                                 window.request_redraw();
                             }

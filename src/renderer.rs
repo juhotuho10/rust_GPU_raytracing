@@ -36,7 +36,7 @@ impl Renderer {
             light_mode: 0,
             accumulated_image: vec![],
             accumulation_index: 1.0,
-            frame_index: 0,
+            frame_index: 1,
         };
 
         renderer.reset_accumulation();
@@ -174,7 +174,7 @@ impl Renderer {
         let mut light_contribution = Vec3A::splat(1.0);
         let mut light = Vec3A::splat(0.0);
 
-        let mut seed = index as u32 * self.frame_index;
+        let mut seed = (index as u32) * (self.frame_index);
 
         for i in 0..bounces {
             let hit_payload = &self.trace_ray(&ray);
