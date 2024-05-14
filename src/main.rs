@@ -675,19 +675,16 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                     interacted = true;
                 };
 
-                let sky_color = screne_renderer.scene.sky_color;
-                let mut emission_power: [f32; 3] = sky_color.into();
+                let sky_color = &mut screne_renderer.scene.sky_color;
 
                 ui.label("sky color:");
                 if ui
-                    .color_edit_button_rgb(&mut emission_power)
+                    .color_edit_button_rgb(sky_color.as_mut())
                     .on_hover_text("color")
                     .changed()
                 {
                     interacted = true;
                 };
-
-                screne_renderer.scene.sky_color = emission_power.into();
 
                 // len - 1 because the last sphere is the floor sphere
                 let sphere_count = screne_renderer.scene.spheres.len();
@@ -751,16 +748,14 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                         let current_material = &mut screne_renderer.scene.materials[material_index];
 
                         let sphere_color = &mut current_material.albedo;
-                        let mut color: [f32; 3] = (*sphere_color).into();
 
                         let sphere_emission_color = &mut current_material.emission_color;
-                        let mut emission_color: [f32; 3] = (*sphere_emission_color).into();
 
                         let emission_power = &mut current_material.emission_power;
 
                         ui.horizontal(|ui| {
                             if ui
-                                .color_edit_button_rgb(&mut color)
+                                .color_edit_button_rgb(sphere_color.as_mut())
                                 .on_hover_text("color")
                                 .changed()
                             {
@@ -768,7 +763,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                             };
 
                             if ui
-                                .color_edit_button_rgb(&mut emission_color)
+                                .color_edit_button_rgb(sphere_emission_color.as_mut())
                                 .on_hover_text("emission")
                                 .changed()
                             {
@@ -787,12 +782,6 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                         {
                             interacted = true;
                         };
-
-                        let new_color: Vec3A = color.into();
-                        current_material.albedo = new_color;
-
-                        let new_emission_color: Vec3A = emission_color.into();
-                        current_material.emission_color = new_emission_color;
 
                         if !floor_sphere {
                             let sphere_radius = &mut current_sphere.radius;
