@@ -1,8 +1,3 @@
-use std::fs::DirBuilder;
-use std::os::windows::thread;
-
-use crate::Scene::{Material, Sphere};
-
 use super::camera::{Camera, Ray};
 use super::Scene::RenderScene;
 
@@ -11,7 +6,6 @@ use egui::Context;
 use glam::{vec3a, Vec3A};
 
 use rayon::prelude::*;
-use wgpu::hal::auxil::db;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct HitPayload {

@@ -130,7 +130,10 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     size.width = size.width.max(1);
     size.height = size.height.max(1);
 
-    let mut mouse_resting_position = egui::pos2(size.width as f32 / 2., size.height as f32 / 2.);
+    let mut mouse_resting_position = egui::pos2(
+        (size.width as f32 / 2.).round(),
+        (size.height as f32 / 2.).round(),
+    );
 
     let mut current_mouse_pos = mouse_resting_position;
 
@@ -228,17 +231,16 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
             // `event_loop.run` never returns, therefore we must do this to ensure
             // the resources are properly cleaned up.
 
-            let start_time = Instant::now();
-
-            let _ = (&instance, &pipeline_layout);
-
             platform.handle_event(&event);
+            let _ = (&instance, &pipeline_layout);
 
             match event {
                 Event::DeviceEvent { .. } => {
                     window.request_redraw();
                 }
                 Event::WindowEvent { event, .. } => {
+                    let start_time = Instant::now();
+
                     match event {
                         WindowEvent::CursorMoved {
                             device_id: _,
@@ -256,8 +258,10 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             screen_descriptor.physical_height = size.height;
                             screen_descriptor.physical_width = size.width;
 
-                            mouse_resting_position =
-                                egui::pos2(size.width as f32 / 2., size.height as f32 / 2.);
+                            mouse_resting_position = egui::pos2(
+                                (size.width as f32 / 2.).round(),
+                                (size.height as f32 / 2.).round(),
+                            );
 
                             scene_renderer.on_resize(size.width, size.height);
 
@@ -343,6 +347,14 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                         },
 
                         WindowEvent::RedrawRequested => {
+                            if movement_mode {
+                                window
+                                    .set_cursor_position(PhysicalPosition::new(
+                                        mouse_resting_position.x,
+                                        mouse_resting_position.y,
+                                    ))
+                                    .expect("couldn't set cursor pos");
+                            }
                             // Logic to redraw the window
                             let frame: wgpu::SurfaceTexture = surface
                                 .get_current_texture()
@@ -410,17 +422,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     .input(|i: &egui::InputState| i.pointer.latest_pos())
                                     .unwrap();
 
-                                let delta = (current_mouse_pos - mouse_resting_position)
-                                    .clamp(egui::vec2(-20., -20.), egui::vec2(20., 20.));
+                                let delta = current_mouse_pos - mouse_resting_position;
 
                                 scene_renderer.on_update(delta, &elapsed, &platform.context());
-
-                                window
-                                    .set_cursor_position(PhysicalPosition::new(
-                                        mouse_resting_position.x,
-                                        mouse_resting_position.y,
-                                    ))
-                                    .expect("couldn't set cursor pos");
                             }
 
                             if platform

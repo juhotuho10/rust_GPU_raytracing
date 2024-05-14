@@ -44,7 +44,7 @@ impl Camera {
             vertical_fov: 45.0,
 
             movement_speed: 0.05,
-            turning_speed: 0.003,
+            turning_speed: 0.002,
 
             projection: Mat4::from_cols_slice(&[1.0; 16]),
             inverse_projection: Mat4::from_cols_slice(&[1.0; 16]),
@@ -121,7 +121,6 @@ impl Camera {
             self.direction = q.mul_vec3(self.direction.into()).into();
 
             moved = true;
-            dbg!(self.direction);
         }
 
         if moved {
