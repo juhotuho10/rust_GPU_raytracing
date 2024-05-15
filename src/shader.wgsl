@@ -26,7 +26,7 @@ struct VertexOutput {
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
-    // Define positions to cover the whole NDC space [-1, 1]
+    //positions to cover the whole NDC space [-1, 1]
     var positions = array<vec4<f32>, 6>(
         vec4<f32>(-1.0,  1.0, 0.0, 1.0), // top left
         vec4<f32>(-1.0, -1.0, 0.0, 1.0), // bottom left
@@ -37,7 +37,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
         vec4<f32>( 1.0,  1.0, 0.0, 1.0)  // top right
     );
 
-    // Define texture coordinates corresponding to each vertex
+    //texture coordinates corresponding to each vertex
     var tex_coords = array<vec2<f32>, 6>(
         vec2<f32>(0.0, 0.0), // top left
         vec2<f32>(0.0, 1.0), // bottom left
