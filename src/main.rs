@@ -7,13 +7,12 @@ use Scene::{Material, RenderScene, Sphere};
 
 use egui::{pos2, Color32, DragValue, Frame, FullOutput};
 
-use rayon::{prelude::*, ThreadPoolBuilder};
 use renderer::Renderer;
 use std::{borrow::Cow, time};
 use wgpu::{
-    Adapter, Backends, BindGroup, Device, Dx12Compiler, Gles3MinorVersion, InstanceDescriptor,
-    InstanceFlags, PipelineLayout, Queue, Surface, SurfaceConfiguration, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages,
+    Adapter, Backends, BindGroup, Device, Dx12Compiler, Gles3MinorVersion, Instance,
+    InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface, SurfaceConfiguration,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
@@ -119,14 +118,6 @@ fn define_scene() -> RenderScene {
 async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut movement_mode = false;
 
-    let available_threads = rayon::current_num_threads();
-    let used_threads = available_threads / 2;
-
-    let thread_pool = ThreadPoolBuilder::new()
-        .num_threads(used_threads)
-        .build()
-        .unwrap();
-
     let mut size = window.inner_size();
     size.width = size.width.max(1);
     size.height = size.height.max(1);
@@ -148,14 +139,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
 
-    let instance_desc: wgpu::InstanceDescriptor = InstanceDescriptor {
-        backends: Backends::VULKAN,
-        flags: InstanceFlags::default(),
-        dx12_shader_compiler: Dx12Compiler::default(),
-        gles_minor_version: Gles3MinorVersion::default(),
-    };
-
-    let instance = wgpu::Instance::new(instance_desc);
+    let instance = generate_instance();
 
     let surface: Surface = instance.create_surface(&window).unwrap();
     let adapter = create_adapter(&instance, &surface).await;
@@ -178,19 +162,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let render_pipeline = create_render_pipeline(&device, &pipeline_layout, texture.format());
 
-    //let mut surface_config = surface
-    //    .get_default_config(&adapter, size.width, size.height)
-    //    .unwrap();
-
-    let adapter_capbilities = *surface
-        .get_capabilities(&adapter)
-        .formats
-        .first()
-        .expect("couldn't get format");
-
     let mut surface_config = wgpu::SurfaceConfiguration {
         usage: TextureUsages::RENDER_ATTACHMENT,
-        format: adapter_capbilities,
+        format: texture.format(),
         width: size.width,
         height: size.height,
         present_mode: wgpu::PresentMode::Fifo,
@@ -365,7 +339,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     label: None,
                                 });
 
-                            let pixel_colors = scene_renderer.generate_pixels(&thread_pool);
+                            let pixel_colors = scene_renderer.generate_pixels();
 
                             update_render_queue(&queue, &texture, &size, &pixel_colors);
 
@@ -638,6 +612,17 @@ fn generate_sampler(device: &wgpu::Device) -> wgpu::Sampler {
         mipmap_filter: wgpu::FilterMode::Nearest,
         ..Default::default()
     })
+}
+
+fn generate_instance() -> Instance {
+    let instance_desc: wgpu::InstanceDescriptor = InstanceDescriptor {
+        backends: Backends::VULKAN,
+        flags: InstanceFlags::default(),
+        dx12_shader_compiler: Dx12Compiler::default(),
+        gles_minor_version: Gles3MinorVersion::default(),
+    };
+
+    wgpu::Instance::new(instance_desc)
 }
 
 fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOutput {

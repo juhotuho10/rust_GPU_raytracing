@@ -5,7 +5,7 @@ use egui::Context;
 
 use glam::{vec3a, Vec3A};
 
-use rayon::prelude::*;
+use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct HitPayload {
@@ -24,10 +24,19 @@ pub struct Renderer {
     pub light_mode: u32,
     accumulated_image: Vec<Vec3A>,
     accumulation_index: f32,
+    thread_pool: ThreadPool,
 }
 
 impl Renderer {
     pub fn new(camera: Camera, scene: RenderScene) -> Renderer {
+        let available_threads = rayon::current_num_threads();
+        let used_threads = available_threads / 2;
+
+        let thread_pool = ThreadPoolBuilder::new()
+            .num_threads(used_threads)
+            .build()
+            .expect("couldn't construct threadpool");
+
         let mut renderer = Renderer {
             camera,
             scene,
@@ -35,6 +44,7 @@ impl Renderer {
             light_mode: 0,
             accumulated_image: vec![],
             accumulation_index: 1.0,
+            thread_pool,
         };
 
         renderer.reset_accumulation();
@@ -42,7 +52,7 @@ impl Renderer {
         renderer
     }
 
-    pub fn generate_pixels(&mut self, thread_pool: &rayon::ThreadPool) -> Vec<u8> {
+    pub fn generate_pixels(&mut self) -> Vec<u8> {
         let ray_directions = &self.camera.ray_directions;
 
         let mut pixel_rgba: Vec<u8> = Vec::with_capacity(ray_directions.len() * 4);
@@ -58,7 +68,7 @@ impl Renderer {
             self.accumulated_image[index] += *color;
         }
 
-        thread_pool.install(|| {
+        self.thread_pool.install(|| {
             pixel_rgba = (0..ray_directions.len())
                 .into_par_iter()
                 .flat_map_iter(|index: usize| {
