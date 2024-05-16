@@ -29,6 +29,9 @@ use glam::{vec3, vec3a, Vec3, Vec3A};
 
 use std::time::Instant;
 
+use futures::channel::oneshot;
+use futures::executor::block_on;
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct Params {
@@ -156,8 +159,13 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     // ################################ GPU DATA PIPELINE #########################################
 
     let mut input_data = generate_data(&size);
-    let (mut input_buffer, mut output_buffer, mut shader_params) =
-        create_buffers(&device, &input_data, &size);
+    let (
+        mut buffer_size,
+        mut input_buffer,
+        mut output_buffer,
+        mut shader_params,
+        mut staging_buffer,
+    ) = create_buffers(&device, &input_data, &size);
 
     let mut bytes_per_row = calculate_bytes_per_row(&size);
 
@@ -304,8 +312,13 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                             // ###################### COMPUTE RESIZING ##################################
                             input_data = generate_data(&size);
-                            (input_buffer, output_buffer, shader_params) =
-                                create_buffers(&device, &input_data, &size);
+                            (
+                                buffer_size,
+                                input_buffer,
+                                output_buffer,
+                                shader_params,
+                                staging_buffer,
+                            ) = create_buffers(&device, &input_data, &size);
 
                             bytes_per_row = calculate_bytes_per_row(&size);
 
@@ -409,7 +422,47 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 );
                             }
 
+                            // Copy the data from the output buffer to the staging buffer
+                            encoder.copy_buffer_to_buffer(
+                                &output_buffer,
+                                0,
+                                &staging_buffer,
+                                0,
+                                buffer_size / 3 * 4,
+                            );
+
                             queue.submit(Some(encoder.finish()));
+
+                            //####################################### read out the buffer for debugging #################
+
+                            let buffer_slice = staging_buffer.slice(..);
+                            let (sender, receiver) = futures::channel::oneshot::channel();
+
+                            buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+                                sender.send(result).unwrap();
+                            });
+
+                            device.poll(wgpu::Maintain::Wait);
+
+                            // Wait for the mapping to complete
+                            if let Ok(Ok(())) = block_on(receiver) {
+                                // Read the buffer data
+                                let data = buffer_slice.get_mapped_range();
+                                let output: &[u8] = &data;
+
+                                // Print the first few values for debugging
+                                for i in 0..10 {
+                                    let pixel = bytemuck::cast_slice::<u8, [f32; 4]>(output)[i];
+                                    println!("Pixel {}: {:?}", i, pixel);
+                                }
+
+                                // Unmap the buffer
+                                staging_buffer.unmap();
+                            } else {
+                                println!("Failed to map buffer");
+                            }
+
+                            // #########################################################################################
 
                             // ####################### move compute results into texture ##################################
                             let mut encoder =
@@ -812,7 +865,7 @@ fn create_buffers(
     device: &wgpu::Device,
     input_data: &[[f32; 3]],
     size: &winit::dpi::PhysicalSize<u32>,
-) -> (Buffer, Buffer, Buffer) {
+) -> (u64, Buffer, Buffer, Buffer, Buffer) {
     let buffer_size = std::mem::size_of_val(input_data) as wgpu::BufferAddress;
 
     let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -837,7 +890,21 @@ fn create_buffers(
         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     });
 
-    (input_buffer, output_buffer, params_buffer)
+    // Create staging buffer for reading back data
+    let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Staging Buffer"),
+        size: buffer_size / 3 * 4,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+
+    (
+        buffer_size,
+        input_buffer,
+        output_buffer,
+        params_buffer,
+        staging_buffer,
+    )
 }
 
 fn create_compute_bindgroup_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
