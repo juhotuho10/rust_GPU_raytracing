@@ -5,15 +5,15 @@ mod renderer;
 use camera::Camera;
 use Scene::{Material, RenderScene, Sphere};
 
-use egui::{pos2, Color32, DragValue, Frame, FullOutput};
+use egui::{epaint::textures, pos2, Color32, DragValue, Frame, FullOutput};
 
 use renderer::Renderer;
 use std::{borrow::Cow, time};
 use wgpu::{
-    include_wgsl, util::DeviceExt, Adapter, Backends, BindGroup, Buffer, Device, Dx12Compiler,
-    Gles3MinorVersion, Instance, InstanceDescriptor, InstanceFlags, PipelineCompilationOptions,
-    PipelineLayout, Queue, ShaderModule, Surface, SurfaceConfiguration, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages,
+    core::device::queue, include_wgsl, util::DeviceExt, Adapter, Backends, BindGroup, Buffer,
+    Device, Dx12Compiler, Gles3MinorVersion, Instance, InstanceDescriptor, InstanceFlags,
+    PipelineCompilationOptions, PipelineLayout, Queue, ShaderModule, Surface, SurfaceConfiguration,
+    Texture, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureView,
 };
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
@@ -203,12 +203,12 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let mut texture = create_texture(&device, size);
 
-    let render_bind_group_layout: wgpu::BindGroupLayout = generate_bind_group_layout(&device);
+    let render_bind_group_layout: wgpu::BindGroupLayout = create_render_bind_group_layout(&device);
 
     let sampler: wgpu::Sampler = generate_sampler(&device);
 
     let mut render_bind_group =
-        create_device_bindgroup(&device, &render_bind_group_layout, &texture, &sampler);
+        create_render_device_bindgroup(&device, &render_bind_group_layout, &texture, &sampler);
 
     let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
@@ -303,7 +303,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                             texture = create_texture(&device, size);
 
-                            /*bind_group = create_device_bindgroup(
+                            /*bind_group = create_render_device_bindgroup(
                                 &device,
                                 &bind_group_layout,
                                 &texture,
@@ -402,17 +402,18 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                         WindowEvent::RedrawRequested => {
                             // Create command encoder and dispatch compute pass
-                            let mut encoder =
+                            let mut compute_encoder =
                                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                                     label: Some("Compute Encoder"),
                                 });
 
                             {
-                                let mut compute_pass =
-                                    encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                                let mut compute_pass = compute_encoder.begin_compute_pass(
+                                    &wgpu::ComputePassDescriptor {
                                         label: Some("Compute Pass"),
                                         timestamp_writes: None,
-                                    });
+                                    },
+                                );
                                 compute_pass.set_pipeline(&compute_pipeline);
                                 compute_pass.set_bind_group(0, &compute_bind_group, &[]);
                                 compute_pass.dispatch_workgroups(
@@ -422,18 +423,18 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 );
                             }
 
+                            queue.submit(Some(compute_encoder.finish()));
+
+                            //####################################### read out the buffer for debugging #################
+
                             // Copy the data from the output buffer to the staging buffer
-                            encoder.copy_buffer_to_buffer(
+                            /*encoder.copy_buffer_to_buffer(
                                 &output_buffer,
                                 0,
                                 &staging_buffer,
                                 0,
                                 buffer_size / 3 * 4,
                             );
-
-                            queue.submit(Some(encoder.finish()));
-
-                            //####################################### read out the buffer for debugging #################
 
                             let buffer_slice = staging_buffer.slice(..);
                             let (sender, receiver) = futures::channel::oneshot::channel();
@@ -460,24 +461,18 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 staging_buffer.unmap();
                             } else {
                                 println!("Failed to map buffer");
-                            }
+                            }*/
 
                             // #########################################################################################
 
                             // ####################### move compute results into texture ##################################
-                            let mut encoder =
+                            let mut copy_encoder =
                                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                                    label: Some("Render Encoder"),
+                                    label: Some("Copy Encoder"),
                                 });
 
-                            let texture_extent = wgpu::Extent3d {
-                                width: size.width,
-                                height: size.height,
-                                depth_or_array_layers: 1,
-                            };
-
                             // Copy the output buffer to the texture
-                            encoder.copy_buffer_to_texture(
+                            copy_encoder.copy_buffer_to_texture(
                                 wgpu::ImageCopyBuffer {
                                     buffer: &output_buffer,
                                     layout: wgpu::ImageDataLayout {
@@ -492,10 +487,16 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     origin: wgpu::Origin3d::ZERO,
                                     aspect: wgpu::TextureAspect::All,
                                 },
-                                texture_extent,
+                                wgpu::Extent3d {
+                                    width: size.width,
+                                    height: size.height,
+                                    depth_or_array_layers: 1,
+                                },
                             );
 
-                            queue.submit(Some(encoder.finish()));
+                            queue.submit(Some(copy_encoder.finish()));
+
+                            // ####################### render the rexture on to the screen ##################################
 
                             let frame: wgpu::SurfaceTexture = surface
                                 .get_current_texture()
@@ -511,15 +512,15 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 });
 
                             {
-                                let mut render_pass =
-                                    render_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                                let mut render_pass: wgpu::RenderPass = render_encoder
+                                    .begin_render_pass(&wgpu::RenderPassDescriptor {
                                         label: Some("Render Pass"),
                                         color_attachments: &[Some(
                                             wgpu::RenderPassColorAttachment {
                                                 view: &view,
                                                 resolve_target: None,
                                                 ops: wgpu::Operations {
-                                                    load: wgpu::LoadOp::Load,
+                                                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                                                     store: wgpu::StoreOp::Store,
                                                 },
                                             },
@@ -678,16 +679,16 @@ fn create_texture(device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) ->
         mip_level_count: 1,
         sample_count: 1,
         dimension: TextureDimension::D2,
-        format: TextureFormat::Rgba8UnormSrgb,
+        format: TextureFormat::Rgba8Unorm, //Rgba8UnormSrgb
         usage: TextureUsages::TEXTURE_BINDING
             | TextureUsages::COPY_DST
             | wgpu::TextureUsages::RENDER_ATTACHMENT,
 
-        view_formats: &[],
+        view_formats: &[TextureFormat::Rgba8Unorm],
     })
 }
 
-fn create_device_bindgroup(
+fn create_render_device_bindgroup(
     device: &wgpu::Device,
     render_bind_group_layout: &wgpu::BindGroupLayout,
     texture: &wgpu::Texture,
@@ -699,11 +700,11 @@ fn create_device_bindgroup(
         layout: render_bind_group_layout,
         entries: &[
             wgpu::BindGroupEntry {
-                binding: 0,
+                binding: 3,
                 resource: wgpu::BindingResource::TextureView(&texture_view),
             },
             wgpu::BindGroupEntry {
-                binding: 1,
+                binding: 4,
                 resource: wgpu::BindingResource::Sampler(sampler),
             },
         ],
@@ -736,12 +737,12 @@ fn setup_renderpass(
     rpass.draw(0..6, 0..1);
 }
 
-fn generate_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+fn create_render_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("Texture Bind Group Layout"),
         entries: &[
             wgpu::BindGroupLayoutEntry {
-                binding: 0,
+                binding: 3,
                 visibility: wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Texture {
                     sample_type: wgpu::TextureSampleType::Float { filterable: true },
@@ -751,7 +752,7 @@ fn generate_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
                 count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding: 1,
+                binding: 4,
                 visibility: wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                 count: None,
