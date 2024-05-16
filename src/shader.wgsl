@@ -1,58 +1,89 @@
-//@vertex
-//fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> @builtin(position) vec4<f32> {
-//    let x = f32(i32(in_vertex_index) - 1);
-//    let y = f32(i32(in_vertex_index & 1u) * 2 - 1);
-//    return vec4<f32>(x, y, 0.0, 1.0);
-//}
+//struct VertexOutput {
+//    @builtin(position) position: vec4<f32>,
+//    @location(1) tex_coords: vec2<f32>,
+//};
 //
 //@group(0) @binding(0) var tex: texture_2d<f32>;
 //@group(0) @binding(1) var samp: sampler;
+
+
+//@vertex
+//fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+//    //positions to cover the whole NDC space [-1, 1]
+//    var positions = array<vec4<f32>, 6>(
+//        vec4<f32>(-1.0,  1.0, 0.0, 1.0), // top left
+//        vec4<f32>(-1.0, -1.0, 0.0, 1.0), // bottom left
+//        vec4<f32>( 1.0, -1.0, 0.0, 1.0), // bottom right
+//        vec4<f32>(-1.0,  1.0, 0.0, 1.0), // top left
+//        vec4<f32>( 1.0, -1.0, 0.0, 1.0), // bottom right
+//        vec4<f32>( 1.0,  1.0, 0.0, 1.0)  // top right
+//    );
+//
+//    //texture coordinates corresponding to each vertex
+//    var tex_coords = array<vec2<f32>, 6>(
+//        vec2<f32>(0.0, 0.0), // top left
+//        vec2<f32>(0.0, 1.0), // bottom left
+//        vec2<f32>(1.0, 1.0), // bottom right
+//        
+//        vec2<f32>(0.0, 0.0), // top left
+//        vec2<f32>(1.0, 1.0), // bottom right
+//        vec2<f32>(1.0, 0.0)  // top right
+//    );
+//
+//    return VertexOutput(positions[vertex_index], tex_coords[vertex_index]);
+//}
+//
 //
 //@fragment
-//fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-//    let uv = position.xy * 0.5 + 0.5;  // Transform from clip space to UV space
-//    return textureSample(tex, samp, uv);
+//fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+//    return textureSample(tex, samp, input.tex_coords);
 //}
 
 
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(1) tex_coords: vec2<f32>,
+
+
+struct Params {
+    width: u32,
 };
 
-@group(0) @binding(0) var tex: texture_2d<f32>;
-@group(0) @binding(1) var samp: sampler;
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read> input_data: array<vec3<f32>>;
+@group(0) @binding(2) var<storage, read_write> output_data: array<vec4<f32>>;
 
+@compute @workgroup_size(8, 8, 1)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let index = global_id.x + global_id.y * params.width;
+    let pixel = input_data[index];
+
+    if (pixel.x == pixel.y) {
+        output_data[index] = vec4<f32>(0.0, 1.0, 0.0, 1.0); // Green
+    } else {
+        output_data[index] = vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+    }
+}
 
 @vertex
-fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
-    //positions to cover the whole NDC space [-1, 1]
-    var positions = array<vec4<f32>, 6>(
-        vec4<f32>(-1.0,  1.0, 0.0, 1.0), // top left
-        vec4<f32>(-1.0, -1.0, 0.0, 1.0), // bottom left
-        vec4<f32>( 1.0, -1.0, 0.0, 1.0), // bottom right
-
-        vec4<f32>(-1.0,  1.0, 0.0, 1.0), // top left
-        vec4<f32>( 1.0, -1.0, 0.0, 1.0), // bottom right
-        vec4<f32>( 1.0,  1.0, 0.0, 1.0)  // top right
+fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<f32> {
+    var positions = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, -1.0),   // top left
+        vec2<f32>( 1.0, -1.0),   // bottom left
+        vec2<f32>(-1.0,  1.0),   // bottom right
+        vec2<f32>(-1.0,  1.0),   // top left
+        vec2<f32>( 1.0, -1.0),   // bottom right
+        vec2<f32>( 1.0,  1.0)    // top right
     );
 
-    //texture coordinates corresponding to each vertex
-    var tex_coords = array<vec2<f32>, 6>(
-        vec2<f32>(0.0, 0.0), // top left
-        vec2<f32>(0.0, 1.0), // bottom left
-        vec2<f32>(1.0, 1.0), // bottom right
-        
-        vec2<f32>(0.0, 0.0), // top left
-        vec2<f32>(1.0, 1.0), // bottom right
-        vec2<f32>(1.0, 0.0)  // top right
-    );
-
-    return VertexOutput(positions[vertex_index], tex_coords[vertex_index]);
+    let pos = positions[vertex_index];
+    return vec4<f32>(pos, 0.0, 1.0);
 }
 
 
+
+@group(0) @binding(0) var my_texture: texture_2d<f32>;
+@group(0) @binding(1) var my_sampler: sampler;
+
 @fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    return textureSample(tex, samp, input.tex_coords);
+fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    let tex_coords = pos.xy * 0.5 + vec2<f32>(0.5, 0.5); // Convert to [0, 1] range
+    return textureSample(my_texture, my_sampler, tex_coords);
 }
