@@ -424,19 +424,19 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             }
 
                             // Copy the data from the output buffer to the staging buffer
-                            //compute_encoder.copy_buffer_to_buffer(
-                            //    &output_buffer,
-                            //    0,
-                            //    &staging_buffer,
-                            //    0,
-                            //    buffer_size,
-                            //);
+                            compute_encoder.copy_buffer_to_buffer(
+                                &output_buffer,
+                                0,
+                                &staging_buffer,
+                                0,
+                                buffer_size,
+                            );
 
                             queue.submit(Some(compute_encoder.finish()));
 
                             //####################################### read out the buffer for debugging #################
 
-                            /*let buffer_slice = staging_buffer.slice(..);
+                            let buffer_slice = staging_buffer.slice(..);
                             let (sender, receiver) = futures::channel::oneshot::channel();
 
                             buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
@@ -445,56 +445,27 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                             device.poll(wgpu::Maintain::Wait);
 
+                            let pixel_colors: Vec<u8>;
                             // Wait for the mapping to complete
                             if let Ok(Ok(())) = block_on(receiver) {
                                 // Read the buffer data
                                 let data = buffer_slice.get_mapped_range();
-                                let output: &[u8] = &data;
 
-                                // Print the first few values for debugging
-                                for i in 0..10 {
-                                    let pixel = bytemuck::cast_slice::<u8, [f32; 4]>(output)[i];
-                                    println!("Pixel {}: {:?}", i, pixel);
-                                }
-
-                                // Unmap the buffer
-                                staging_buffer.unmap();
+                                // Cast the data to f32 and convert it to u8
+                                pixel_colors = bytemuck::cast_slice::<u8, [f32; 4]>(&data)
+                                    .iter()
+                                    .flat_map(|pixel| {
+                                        // Convert f32 to u8 and clamp the values between 0 and 255
+                                        pixel.iter().map(|&component| (component * 255.0) as u8)
+                                    })
+                                    .collect();
                             } else {
-                                println!("Failed to map buffer");
-                            }*/
+                                panic!("Failed to map buffer");
+                            }
+                            // Unmap the buffer
+                            staging_buffer.unmap();
 
                             // #########################################################################################
-
-                            // ####################### move compute results into texture ##################################
-                            let mut copy_encoder =
-                                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                                    label: Some("Copy Encoder"),
-                                });
-
-                            // Copy the output buffer to the texture
-                            copy_encoder.copy_buffer_to_texture(
-                                wgpu::ImageCopyBuffer {
-                                    buffer: &output_buffer,
-                                    layout: wgpu::ImageDataLayout {
-                                        offset: 0,
-                                        bytes_per_row: Some(bytes_per_row), // 4 bytes per pixel
-                                        rows_per_image: Some(size.height),
-                                    },
-                                },
-                                wgpu::ImageCopyTexture {
-                                    texture: &texture,
-                                    mip_level: 0,
-                                    origin: wgpu::Origin3d::ZERO,
-                                    aspect: wgpu::TextureAspect::All,
-                                },
-                                wgpu::Extent3d {
-                                    width: size.width,
-                                    height: size.height,
-                                    depth_or_array_layers: 1,
-                                },
-                            );
-
-                            queue.submit(Some(copy_encoder.finish()));
 
                             // ####################### render the rexture on to the screen ##################################
 
@@ -511,7 +482,20 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     label: None,
                                 });
 
-                            {
+                            //update_render_queue(&queue, &texture, &size, &pixel_colors);
+
+                            let pixel_colors = scene_renderer.generate_pixels();
+
+                            update_render_queue(&queue, &texture, &size, &pixel_colors);
+
+                            setup_renderpass(
+                                &mut render_encoder,
+                                &view,
+                                &render_pipeline,
+                                &render_bind_group,
+                            );
+
+                            /*{
                                 let mut render_pass: wgpu::RenderPass = render_encoder
                                     .begin_render_pass(&wgpu::RenderPassDescriptor {
                                         label: Some("Render Pass"),
@@ -533,7 +517,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 render_pass.set_pipeline(&render_pipeline);
                                 render_pass.set_bind_group(0, &render_bind_group, &[]);
                                 render_pass.draw(0..6, 0..1);
-                            }
+                            }*/
 
                             queue.submit(Some(render_encoder.finish()));
                             frame.present();
@@ -656,7 +640,7 @@ fn update_render_queue(
         wgpu::ImageDataLayout {
             offset: 0,
             bytes_per_row: Some(size.width * 4),
-            rows_per_image: Some(size.height),
+            rows_per_image: None,
         },
         wgpu::Extent3d {
             width: size.width,
