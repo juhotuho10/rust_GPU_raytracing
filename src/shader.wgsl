@@ -54,10 +54,19 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let pixel = input_data[index];
 
     if (pixel.x == pixel.y) {
-        output_data[index] = vec4<f32>(0.0, 1.0, 0.0, 1.0); // Green
+        output_data[index] = vec4<f32>(0.0, 255.0, 0.0, 255.0); // Green
     } else {
-        output_data[index] = vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+        output_data[index] = vec4<f32>(255.0, 0.0, 0.0, 255.0); // Red
     }
+}
+
+fn pack_4u32_to_u32(x: u32, y: u32, z: u32, w: u32) -> u32 {
+    let byte0: u32 = x & 0xFFu;
+    let byte1: u32 = y & 0xFFu;
+    let byte2: u32 = z & 0xFFu;
+    let byte3: u32 = w & 0xFFu;
+
+    return (byte0 << 0) | (byte1 << 8) | (byte2 << 16) | (byte3 << 24);
 }
 
 struct VertexOutput {
@@ -96,6 +105,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-     return textureSample(my_texture, my_sampler, input.tex_coords);
+    return vec4<f32>(input.tex_coords.x, input.tex_coords.y, 0.0, 1.0);
+    //return textureSample(my_texture, my_sampler, input.tex_coords);
     
 }

@@ -11,7 +11,7 @@ use renderer::Renderer;
 use std::{borrow::Cow, time};
 use wgpu::{
     core::device::queue, include_wgsl, util::DeviceExt, Adapter, Backends, BindGroup, Buffer,
-    Device, Dx12Compiler, Gles3MinorVersion, Instance, InstanceDescriptor, InstanceFlags,
+    Color, Device, Dx12Compiler, Gles3MinorVersion, Instance, InstanceDescriptor, InstanceFlags,
     PipelineCompilationOptions, PipelineLayout, Queue, ShaderModule, Surface, SurfaceConfiguration,
     Texture, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureView,
 };
@@ -423,20 +423,20 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 );
                             }
 
+                            // Copy the data from the output buffer to the staging buffer
+                            //compute_encoder.copy_buffer_to_buffer(
+                            //    &output_buffer,
+                            //    0,
+                            //    &staging_buffer,
+                            //    0,
+                            //    buffer_size,
+                            //);
+
                             queue.submit(Some(compute_encoder.finish()));
 
                             //####################################### read out the buffer for debugging #################
 
-                            // Copy the data from the output buffer to the staging buffer
-                            /*encoder.copy_buffer_to_buffer(
-                                &output_buffer,
-                                0,
-                                &staging_buffer,
-                                0,
-                                buffer_size / 3 * 4,
-                            );
-
-                            let buffer_slice = staging_buffer.slice(..);
+                            /*let buffer_slice = staging_buffer.slice(..);
                             let (sender, receiver) = futures::channel::oneshot::channel();
 
                             buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
@@ -520,7 +520,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                                 view: &view,
                                                 resolve_target: None,
                                                 ops: wgpu::Operations {
-                                                    load: wgpu::LoadOp::Clear(wgpu::Color::BLUE),
+                                                    load: wgpu::LoadOp::Clear(Color::TRANSPARENT),
                                                     store: wgpu::StoreOp::Store,
                                                 },
                                             },
@@ -679,7 +679,7 @@ fn create_texture(device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) ->
         mip_level_count: 1,
         sample_count: 1,
         dimension: TextureDimension::D2,
-        format: TextureFormat::Rgba8Unorm, //Rgba8UnormSrgb
+        format: TextureFormat::Rgba8Unorm,
         usage: TextureUsages::TEXTURE_BINDING
             | TextureUsages::COPY_DST
             | wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -867,7 +867,8 @@ fn create_buffers(
     input_data: &[[f32; 3]],
     size: &winit::dpi::PhysicalSize<u32>,
 ) -> (u64, Buffer, Buffer, Buffer, Buffer) {
-    let buffer_size = std::mem::size_of_val(input_data) as wgpu::BufferAddress;
+    let buffer_size =
+        (size.width * size.height * 4 * std::mem::size_of::<f32>() as u32) as wgpu::BufferAddress;
 
     let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Input Buffer"),
@@ -877,7 +878,7 @@ fn create_buffers(
 
     let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("Output Buffer"),
-        size: buffer_size / 3 * 4, // vec3 to vec4
+        size: buffer_size,
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
@@ -894,7 +895,7 @@ fn create_buffers(
     // Create staging buffer for reading back data
     let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("Staging Buffer"),
-        size: buffer_size / 3 * 4,
+        size: buffer_size,
         usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
