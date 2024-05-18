@@ -8,7 +8,7 @@ use Scene::{Material, RenderScene, Sphere};
 use egui::{pos2, Color32, DragValue, Frame, FullOutput};
 
 use renderer::Renderer;
-use std::{borrow::Cow, time};
+use std::{borrow::Cow, io::Read, time};
 use wgpu::{
     include_wgsl, util::DeviceExt, Adapter, Backends, BindGroup, Buffer, Device, Dx12Compiler,
     Gles3MinorVersion, Instance, InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface,
@@ -432,14 +432,18 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 );
                             }
 
-                            // Copy the data from the output buffer to the staging buffer
-                            //compute_encoder.copy_buffer_to_buffer(
-                            //    &output_buffer,
-                            //    0,
-                            //    &staging_buffer,
-                            //    0,
-                            //    buffer_size,
-                            //);
+                            let test = false;
+
+                            if test {
+                                // Copy the data from the output buffer to the staging buffer
+                                compute_encoder.copy_buffer_to_buffer(
+                                    &output_buffer,
+                                    0,
+                                    &staging_buffer,
+                                    0,
+                                    buffer_size,
+                                )
+                            }
 
                             queue.submit(Some(compute_encoder.finish()));
 
@@ -452,42 +456,38 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                             // ###################################### new texture from buffers ########################################
 
-                            /*let buffer_slice = staging_buffer.slice(..);
-                            let (sender, receiver) = futures::channel::oneshot::channel();
+                            if test {
+                                let buffer_slice = staging_buffer.slice(..);
+                                let (sender, receiver) = futures::channel::oneshot::channel();
 
-                            buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-                                sender.send(result).unwrap();
-                            });
+                                buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+                                    sender.send(result).unwrap();
+                                });
 
-                            device.poll(wgpu::Maintain::Wait);
+                                device.poll(wgpu::Maintain::Wait);
 
-                            let pixel_colors: Vec<u8>;
-                            // Wait for the mapping to complete
-                            if let Ok(Ok(())) = block_on(receiver) {
-                                // Read the buffer data
-                                let data = buffer_slice.get_mapped_range();
+                                let pixel_colors: Vec<u8>;
+                                // Wait for the mapping to complete
+                                if let Ok(Ok(())) = block_on(receiver) {
+                                    // Read the buffer data
+                                    let data = buffer_slice.get_mapped_range();
 
-                                // Cast the data to f32 and convert it to u8
-                                pixel_colors = bytemuck::cast_slice::<u8, [f32; 4]>(&data)
-                                    .iter()
-                                    .flat_map(|pixel| {
-                                        // Convert f32 to u8 and clamp the values between 0 and 255
-                                        pixel.iter().map(|&component| component as u8)
-                                    })
-                                    .collect();
+                                    // Cast the data to f32 and convert it to u8
+                                    pixel_colors = bytemuck::cast_slice::<u8, u8>(&data).to_vec();
 
-                                //println!(
-                                //    "wanted: {}, actual: {}",
-                                //    size.height * size.width * 4,
-                                //    pixel_colors.len()
-                                //);
+                                    println!(
+                                        "wanted: {}, actual: {}",
+                                        size.height * size.width * 4,
+                                        pixel_colors.len()
+                                    );
 
-                                update_render_queue(&queue, &texture, &size, &pixel_colors);
-                            } else {
-                                panic!("Failed to map buffer");
+                                    //println!("pixel colors: {:?}", pixel_colors);
+                                } else {
+                                    panic!("Failed to map buffer");
+                                }
+                                // Unmap the buffer
+                                staging_buffer.unmap();
                             }
-                            // Unmap the buffer
-                            staging_buffer.unmap();*/
 
                             // #############################################################################################
 
@@ -852,7 +852,7 @@ fn create_buffers(
     size: &winit::dpi::PhysicalSize<u32>,
 ) -> (u64, Buffer, Buffer, Buffer, Buffer) {
     let buffer_size =
-        (size.width * size.height * 4 * std::mem::size_of::<f32>() as u32) as wgpu::BufferAddress;
+        (size.width * 4 * size.height * std::mem::size_of::<u32>() as u32) as wgpu::BufferAddress;
 
     let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Input Buffer"),
