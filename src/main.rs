@@ -10,9 +10,9 @@ use egui::{pos2, Color32, DragValue, Frame, FullOutput};
 use renderer::Renderer;
 use std::{borrow::Cow, time};
 use wgpu::{
-    Adapter, Backends, BindGroup, Device, Dx12Compiler, Gles3MinorVersion, Instance,
-    InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface, SurfaceConfiguration,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
+    include_wgsl, util::DeviceExt, Adapter, Backends, BindGroup, Buffer, Device, Dx12Compiler,
+    Gles3MinorVersion, Instance, InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface,
+    SurfaceConfiguration, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
@@ -27,6 +27,15 @@ use egui_winit_platform::{Platform, PlatformDescriptor};
 use glam::{vec3a, Vec3A};
 
 use std::time::Instant;
+
+use futures::channel::oneshot;
+use futures::executor::block_on;
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct Params {
+    width: u32,
+}
 
 pub fn main() {
     let event_loop = EventLoop::new().unwrap();
@@ -146,6 +155,54 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     // Create the logical device and command queue
     let (device, queue) = generate_device_and_queue(&adapter).await;
 
+    // ################################ GPU DATA PIPELINE #########################################
+
+    let mut input_data = generate_data(&size);
+    let (
+        mut buffer_size,
+        mut input_buffer,
+        mut output_buffer,
+        mut shader_params,
+        mut staging_buffer,
+    ) = create_buffers(&device, &input_data, &size);
+
+    let mut bytes_per_row = calculate_bytes_per_row(&size);
+
+    let mut compute_bindgroup_layout = create_compute_bindgroup_layout(&device);
+
+    let mut compute_bind_group = create_compute_bindgroup(
+        &device,
+        &compute_bindgroup_layout,
+        &input_buffer,
+        &output_buffer,
+        &shader_params,
+    );
+
+    // #####################################################################################
+
+    // ################################ GPU COMPUTE PIPELINE #########################################
+
+    let compute_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: None,
+        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("compute_shader.wgsl"))),
+    });
+
+    let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Compute Pipeline Layout"),
+        bind_group_layouts: &[&compute_bindgroup_layout],
+        push_constant_ranges: &[],
+    });
+
+    let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("Compute Pipeline"),
+        layout: Some(&compute_pipeline_layout),
+        module: &compute_module,
+        entry_point: "main",
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+    });
+
+    // #####################################################################################
+
     let bind_group_layout = generate_bind_group_layout(&device);
 
     let mut texture = create_texture(&device, size);
@@ -167,7 +224,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         format: texture.format(),
         width: size.width,
         height: size.height,
-        present_mode: wgpu::PresentMode::Fifo,
+        present_mode: wgpu::PresentMode::Immediate,
         desired_maximum_frame_latency: 2,
         alpha_mode: wgpu::CompositeAlphaMode::Auto,
         view_formats: vec![texture.format()],
@@ -249,6 +306,29 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 &sampler,
                             );
 
+                            // ###################### COMPUTE RESIZING ##################################
+                            input_data = generate_data(&size);
+                            (
+                                buffer_size,
+                                input_buffer,
+                                output_buffer,
+                                shader_params,
+                                staging_buffer,
+                            ) = create_buffers(&device, &input_data, &size);
+
+                            bytes_per_row = calculate_bytes_per_row(&size);
+
+                            compute_bindgroup_layout = create_compute_bindgroup_layout(&device);
+
+                            compute_bind_group = create_compute_bindgroup(
+                                &device,
+                                &compute_bindgroup_layout,
+                                &input_buffer,
+                                &output_buffer,
+                                &shader_params,
+                            );
+                            // ####################################################
+
                             surface.configure(&device, &surface_config);
                             // On macos the window needs to be redrawn manually after resizing
 
@@ -317,6 +397,10 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                         },
 
                         WindowEvent::RedrawRequested => {
+                            println!(
+                                "time 1: {}",
+                                start_time.elapsed().as_micros() as f32 / 1000.
+                            );
                             if movement_mode {
                                 window
                                     .set_cursor_position(PhysicalPosition::new(
@@ -325,6 +409,126 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     ))
                                     .expect("couldn't set cursor pos");
                             }
+                            // ###################################### compute step ########################################
+
+                            let mut compute_encoder =
+                                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                    label: Some("Compute Encoder"),
+                                });
+
+                            {
+                                let mut compute_pass = compute_encoder.begin_compute_pass(
+                                    &wgpu::ComputePassDescriptor {
+                                        label: Some("Compute Pass"),
+                                        timestamp_writes: None,
+                                    },
+                                );
+                                compute_pass.set_pipeline(&compute_pipeline);
+                                compute_pass.set_bind_group(0, &compute_bind_group, &[]);
+                                compute_pass.dispatch_workgroups(
+                                    size.width / 8,
+                                    size.height / 8,
+                                    1,
+                                );
+                            }
+
+                            // Copy the data from the output buffer to the staging buffer
+                            //compute_encoder.copy_buffer_to_buffer(
+                            //    &output_buffer,
+                            //    0,
+                            //    &staging_buffer,
+                            //    0,
+                            //    buffer_size,
+                            //);
+
+                            queue.submit(Some(compute_encoder.finish()));
+
+                            println!(
+                                "time 2: {}",
+                                start_time.elapsed().as_micros() as f32 / 1000.
+                            );
+
+                            // #############################################################################################
+
+                            // ###################################### new texture from buffers ########################################
+
+                            /*let buffer_slice = staging_buffer.slice(..);
+                            let (sender, receiver) = futures::channel::oneshot::channel();
+
+                            buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+                                sender.send(result).unwrap();
+                            });
+
+                            device.poll(wgpu::Maintain::Wait);
+
+                            let pixel_colors: Vec<u8>;
+                            // Wait for the mapping to complete
+                            if let Ok(Ok(())) = block_on(receiver) {
+                                // Read the buffer data
+                                let data = buffer_slice.get_mapped_range();
+
+                                // Cast the data to f32 and convert it to u8
+                                pixel_colors = bytemuck::cast_slice::<u8, [f32; 4]>(&data)
+                                    .iter()
+                                    .flat_map(|pixel| {
+                                        // Convert f32 to u8 and clamp the values between 0 and 255
+                                        pixel.iter().map(|&component| component as u8)
+                                    })
+                                    .collect();
+
+                                //println!(
+                                //    "wanted: {}, actual: {}",
+                                //    size.height * size.width * 4,
+                                //    pixel_colors.len()
+                                //);
+
+                                update_render_queue(&queue, &texture, &size, &pixel_colors);
+                            } else {
+                                panic!("Failed to map buffer");
+                            }
+                            // Unmap the buffer
+                            staging_buffer.unmap();*/
+
+                            // #############################################################################################
+
+                            // ###################################### copying buffers to texture ########################################
+                            let mut copy_encoder =
+                                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                    label: Some("Copy Encoder"),
+                                });
+
+                            // Copy the output buffer to the texture
+                            copy_encoder.copy_buffer_to_texture(
+                                wgpu::ImageCopyBuffer {
+                                    buffer: &output_buffer,
+                                    layout: wgpu::ImageDataLayout {
+                                        offset: 0,
+                                        bytes_per_row: Some(bytes_per_row), // 4 bytes per pixel
+                                        rows_per_image: Some(size.height),
+                                    },
+                                },
+                                wgpu::ImageCopyTexture {
+                                    texture: &texture,
+                                    mip_level: 0,
+                                    origin: wgpu::Origin3d::ZERO,
+                                    aspect: wgpu::TextureAspect::All,
+                                },
+                                wgpu::Extent3d {
+                                    width: size.width,
+                                    height: size.height,
+                                    depth_or_array_layers: 1,
+                                },
+                            );
+
+                            queue.submit(Some(copy_encoder.finish()));
+
+                            // #############################################################################################
+
+                            println!(
+                                "time 3: {}",
+                                start_time.elapsed().as_micros() as f32 / 1000.
+                            );
+
                             // Logic to redraw the window
                             let frame: wgpu::SurfaceTexture = surface
                                 .get_current_texture()
@@ -339,9 +543,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     label: None,
                                 });
 
-                            let pixel_colors = scene_renderer.generate_pixels();
-
-                            update_render_queue(&queue, &texture, &size, &pixel_colors);
+                            //let pixel_colors = scene_renderer.generate_pixels();
 
                             setup_renderpass(&mut encoder, &view, &render_pipeline, &bind_group);
 
@@ -377,6 +579,11 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             queue.submit(Some(encoder.finish()));
 
                             frame.present();
+
+                            println!(
+                                "time 4: {}",
+                                start_time.elapsed().as_micros() as f32 / 1000.
+                            );
 
                             //egui_rpass
                             //    .remove_textures(full_output.textures_delta)
@@ -577,7 +784,7 @@ fn create_render_pipeline(
 async fn create_adapter(instance: &wgpu::Instance, surface: &Surface<'_>) -> wgpu::Adapter {
     instance
         .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
+            power_preference: wgpu::PowerPreference::HighPerformance,
             force_fallback_adapter: false,
             // Request an adapter which can render to our surface
             compatible_surface: Some(surface),
@@ -623,6 +830,146 @@ fn generate_instance() -> Instance {
     };
 
     wgpu::Instance::new(instance_desc)
+}
+
+// ######################### compute ########################################
+
+fn generate_data(size: &winit::dpi::PhysicalSize<u32>) -> Vec<[f32; 3]> {
+    let mut data_vec: Vec<[f32; 3]> = vec![];
+
+    for y in 0..size.height {
+        for x in 0..size.width {
+            data_vec.push([x as f32, y as f32, 1.0])
+        }
+    }
+
+    data_vec
+}
+
+fn create_buffers(
+    device: &wgpu::Device,
+    input_data: &[[f32; 3]],
+    size: &winit::dpi::PhysicalSize<u32>,
+) -> (u64, Buffer, Buffer, Buffer, Buffer) {
+    let buffer_size =
+        (size.width * size.height * 4 * std::mem::size_of::<f32>() as u32) as wgpu::BufferAddress;
+
+    let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Input Buffer"),
+        contents: bytemuck::cast_slice(input_data),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+
+    let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Output Buffer"),
+        size: buffer_size,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    });
+
+    // Create uniform buffer
+    let params = Params { width: size.width };
+
+    let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Params Buffer"),
+        contents: bytemuck::cast_slice(&[params]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    // Create staging buffer for reading back data
+    let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Staging Buffer"),
+        size: buffer_size,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+
+    (
+        buffer_size,
+        input_buffer,
+        output_buffer,
+        params_buffer,
+        staging_buffer,
+    )
+}
+
+fn create_compute_bindgroup_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+        label: None,
+    })
+}
+
+fn create_compute_bindgroup(
+    device: &wgpu::Device,
+    bind_group_layout: &wgpu::BindGroupLayout,
+    input_buffer: &Buffer,
+    output_buffer: &Buffer,
+    shader_params: &Buffer,
+) -> BindGroup {
+    let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: shader_params.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: input_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: output_buffer.as_entire_binding(),
+            },
+        ],
+        label: None,
+    });
+
+    compute_bind_group
+}
+
+fn calculate_bytes_per_row(size: &winit::dpi::PhysicalSize<u32>) -> u32 {
+    // the gpu buffer has to be 256 * n bytes per row
+
+    let bytes_per_pixel = 4; // RGBA8Unorm = 4 bytes per pixel
+
+    let value = size.width * bytes_per_pixel;
+    let alignment = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+
+    // bytes per row
+    (value + alignment - 1) & !(alignment - 1)
 }
 
 fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOutput {
