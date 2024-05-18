@@ -15,7 +15,7 @@ use wgpu::{
     SurfaceConfiguration, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
 use winit::{
-    dpi::{PhysicalPosition, PhysicalSize},
+    dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
     event::{ElementState, Event, KeyEvent, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     keyboard::{Key, KeyCode, PhysicalKey},
@@ -42,13 +42,14 @@ pub fn main() {
 
     let builder = winit::window::WindowBuilder::new();
 
-    let window_size = PhysicalSize::new(1600, 800);
+    let window_size = PhysicalSize::new(1920, 1080);
 
     let window = builder
         .with_inner_size(window_size)
         .build(&event_loop)
         .unwrap();
 
+    window.set_resizable(false);
     env_logger::init();
     pollster::block_on(run(event_loop, window));
 }
@@ -158,8 +159,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     // ################################ GPU DATA PIPELINE #########################################
 
     let mut input_data = generate_data(&size);
+
     let (
-        mut buffer_size,
+        mut output_buffer_size,
         mut input_buffer,
         mut output_buffer,
         mut shader_params,
@@ -309,7 +311,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             // ###################### COMPUTE RESIZING ##################################
                             input_data = generate_data(&size);
                             (
-                                buffer_size,
+                                output_buffer_size,
                                 input_buffer,
                                 output_buffer,
                                 shader_params,
@@ -397,10 +399,10 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                         },
 
                         WindowEvent::RedrawRequested => {
-                            println!(
-                                "time 1: {}",
-                                start_time.elapsed().as_micros() as f32 / 1000.
-                            );
+                            //println!(
+                            //    "time 1: {}",
+                            //    start_time.elapsed().as_micros() as f32 / 1000.
+                            //);
                             if movement_mode {
                                 window
                                     .set_cursor_position(PhysicalPosition::new(
@@ -426,8 +428,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 compute_pass.set_pipeline(&compute_pipeline);
                                 compute_pass.set_bind_group(0, &compute_bind_group, &[]);
                                 compute_pass.dispatch_workgroups(
-                                    size.width / 8,
-                                    size.height / 8,
+                                    (size.width + 7) / 8,
+                                    (size.height + 7) / 8,
                                     1,
                                 );
                             }
@@ -441,16 +443,16 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     0,
                                     &staging_buffer,
                                     0,
-                                    buffer_size,
+                                    output_buffer_size,
                                 )
                             }
 
                             queue.submit(Some(compute_encoder.finish()));
 
-                            println!(
-                                "time 2: {}",
-                                start_time.elapsed().as_micros() as f32 / 1000.
-                            );
+                            //println!(
+                            //    "time 2: {}",
+                            //    start_time.elapsed().as_micros() as f32 / 1000.
+                            //);
 
                             // #############################################################################################
 
@@ -475,13 +477,13 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     // Cast the data to f32 and convert it to u8
                                     pixel_colors = bytemuck::cast_slice::<u8, u8>(&data).to_vec();
 
-                                    println!(
-                                        "wanted: {}, actual: {}",
-                                        size.height * size.width * 4,
-                                        pixel_colors.len()
-                                    );
+                                    //println!(
+                                    //    "wanted: {}, actual: {}",
+                                    //    size.height * size.width * 4,
+                                    //    pixel_colors.len()
+                                    //);
 
-                                    //println!("pixel colors: {:?}", pixel_colors);
+                                    println!("pixel colors: {:?}", pixel_colors[0]);
                                 } else {
                                     panic!("Failed to map buffer");
                                 }
@@ -524,10 +526,10 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                             // #############################################################################################
 
-                            println!(
-                                "time 3: {}",
-                                start_time.elapsed().as_micros() as f32 / 1000.
-                            );
+                            //println!(
+                            //    "time 3: {}",
+                            //    start_time.elapsed().as_micros() as f32 / 1000.
+                            //);
 
                             // Logic to redraw the window
                             let frame: wgpu::SurfaceTexture = surface
@@ -580,10 +582,10 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                             frame.present();
 
-                            println!(
-                                "time 4: {}",
-                                start_time.elapsed().as_micros() as f32 / 1000.
-                            );
+                            //println!(
+                            //    "time 4: {}",
+                            //    start_time.elapsed().as_micros() as f32 / 1000.
+                            //);
 
                             //egui_rpass
                             //    .remove_textures(full_output.textures_delta)
@@ -834,12 +836,12 @@ fn generate_instance() -> Instance {
 
 // ######################### compute ########################################
 
-fn generate_data(size: &winit::dpi::PhysicalSize<u32>) -> Vec<[f32; 3]> {
-    let mut data_vec: Vec<[f32; 3]> = vec![];
+fn generate_data(size: &winit::dpi::PhysicalSize<u32>) -> Vec<[f32; 4]> {
+    let mut data_vec: Vec<[f32; 4]> = vec![];
 
     for y in 0..size.height {
         for x in 0..size.width {
-            data_vec.push([x as f32, y as f32, 1.0])
+            data_vec.push([x as f32, y as f32, 1.0, 0.0]); // last 0 for padding, since GPU expects 16 byte data blocks
         }
     }
 
@@ -848,21 +850,22 @@ fn generate_data(size: &winit::dpi::PhysicalSize<u32>) -> Vec<[f32; 3]> {
 
 fn create_buffers(
     device: &wgpu::Device,
-    input_data: &[[f32; 3]],
+    input_data: &[[f32; 4]],
     size: &winit::dpi::PhysicalSize<u32>,
 ) -> (u64, Buffer, Buffer, Buffer, Buffer) {
-    let buffer_size =
-        (size.width * 4 * size.height * std::mem::size_of::<u32>() as u32) as wgpu::BufferAddress;
-
     let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Input Buffer"),
         contents: bytemuck::cast_slice(input_data),
         usage: wgpu::BufferUsages::STORAGE,
     });
 
+    // 4 bytes of u8 per pixel
+    let output_buffer_size =
+        (size.width * size.height * 4 * std::mem::size_of::<u8>() as u32) as wgpu::BufferAddress;
+
     let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("Output Buffer"),
-        size: buffer_size,
+        size: output_buffer_size,
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
@@ -879,13 +882,13 @@ fn create_buffers(
     // Create staging buffer for reading back data
     let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("Staging Buffer"),
-        size: buffer_size,
+        size: output_buffer_size,
         usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
 
     (
-        buffer_size,
+        output_buffer_size,
         input_buffer,
         output_buffer,
         params_buffer,
