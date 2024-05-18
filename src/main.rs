@@ -42,7 +42,7 @@ pub fn main() {
 
     let builder = winit::window::WindowBuilder::new();
 
-    let window_size = PhysicalSize::new(1400, 700);
+    let window_size = PhysicalSize::new(1600, 800);
 
     let window = builder
         .with_inner_size(window_size)
