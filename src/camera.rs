@@ -1,5 +1,6 @@
 use egui::Context;
 use glam::{vec2, vec3a, vec4, Mat4, Quat, Vec2, Vec3A, Vec4};
+use rayon::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ray {
@@ -187,6 +188,43 @@ impl Camera {
                 self.ray_directions[(x + y * self.viewport_width) as usize] = new_ray;
             }
         }
+
+        // multithreadded implementation
+
+        // Create new ray directions in parallel
+        /*let new_ray_directions: Vec<Ray> = (0..self.viewport_height)
+            .into_par_iter()
+            .flat_map(|y| {
+                let y_coord = y as f32 / self.viewport_height as f32;
+                (0..self.viewport_width)
+                    .map(|x| {
+                        let x_coord = x as f32 / self.viewport_width as f32;
+
+                        // normalized between -1 and 1
+                        let normalized_coord = vec2(x_coord, y_coord) * 2.0 - Vec2::ONE;
+
+                        let target: Vec4 = self.inverse_projection
+                            * vec4(normalized_coord.x, normalized_coord.y, 1.0, 1.0);
+
+                        let target_vec3: Vec3A = target.truncate().into();
+
+                        let world_space_target: Vec4 =
+                            (target_vec3 / target.w).normalize().extend(0.0);
+
+                        let ray_direction: Vec3A =
+                            (self.inverse_view * world_space_target).truncate().into();
+
+                        // caching the ray directions so we dont need to calculate them every frame
+                        Ray {
+                            origin: self.position,
+                            direction: ray_direction,
+                        }
+                    })
+                    .collect::<Vec<Ray>>()
+            })
+            .collect();
+
+        self.ray_directions = new_ray_directions;*/
     }
 
     pub fn on_resize(&mut self, width: u32, height: u32) {
