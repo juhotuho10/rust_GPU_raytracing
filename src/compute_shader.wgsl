@@ -1,22 +1,46 @@
 struct Params {
     width: u32,
+
+    // explicit padding to match 16 byte alignment
+    _padding1: u32,
+    _padding2: u32,
+    _padding3: u32,
 };
 
+
+struct RayCamera {
+    origin: vec3<f32>,    
+    direction: vec3<f32>,  
+};
+
+
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> input_data: array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read> camera_rays: array<vec3<f32>>;
 @group(0) @binding(2) var<storage, read_write> output_data: array<u32>;
+@group(0) @binding(3) var<uniform> ray_camera: RayCamera;
 
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let index =  (global_id.y * params.width) + global_id.x;
 
-    let pixel = input_data[index];
+    
 
-    if (pixel.x == pixel.y) {
-        output_data[index] = pack_to_u32(0.0, 1.0, 0.0); // green
+    let ray_origin = ray_camera.origin;
+    let ray_direction = camera_rays[index];
+    let radius = 0.5;
+
+    let a = dot(ray_direction, ray_direction);
+    let b = dot(ray_origin, ray_direction) * 2.0;
+    let c = dot(ray_origin, ray_origin) - (radius * radius);
+
+    let discriminant = b * b - 4.0 * a * c;
+
+    if discriminant > 0 {
+        output_data[index] = pack_to_u32(1.0, 0.0, 1.0); // red
     } else {
-        output_data[index] = pack_to_u32(1.0, 0.0, 0.0); // red
+        output_data[index] = pack_to_u32(0.0, 0.0, 0.0); // black
     }
+
 }
 
 fn pack_to_u32(x: f32, y: f32, z: f32) -> u32 {

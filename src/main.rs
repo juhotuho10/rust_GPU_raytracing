@@ -34,7 +34,21 @@ use futures::executor::block_on;
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct Params {
-    width: u32,
+    width: u32,         // float, aligned to 4 bytes
+    _padding: [u8; 12], // padding to ensure 16-byte alignment
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct RayCamera {
+    pub origin: [f32; 4],    // vec4, aligned to 16 bytes
+    pub direction: [f32; 4], // vec4, aligned to 16 bytes
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Ray {
+    pub direction: [f32; 4], // vec4, aligned to 16 bytes
 }
 
 pub fn main() {
@@ -42,7 +56,7 @@ pub fn main() {
 
     let builder = winit::window::WindowBuilder::new();
 
-    let window_size = PhysicalSize::new(1920, 1080);
+    let window_size = PhysicalSize::new(1600, 900);
 
     let window = builder
         .with_inner_size(window_size)
@@ -158,26 +172,25 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     // ################################ GPU DATA PIPELINE #########################################
 
-    let mut input_data = generate_data(&size);
+    let mut camera_rays = generate_data(&size);
 
     let (
         mut output_buffer_size,
         mut input_buffer,
         mut output_buffer,
-        mut shader_params,
+        mut params_buffer,
         mut staging_buffer,
-    ) = create_buffers(&device, &input_data, &size);
+        mut camera_buffer,
+    ) = create_buffers(&device, &camera_rays, &size);
 
     let mut bytes_per_row = calculate_bytes_per_row(&size);
 
-    let mut compute_bindgroup_layout = create_compute_bindgroup_layout(&device);
-
-    let mut compute_bind_group = create_compute_bindgroup(
+    let (mut compute_bindgroup_layout, mut compute_bind_group) = create_compute_bindgroup(
         &device,
-        &compute_bindgroup_layout,
         &input_buffer,
         &output_buffer,
-        &shader_params,
+        &params_buffer,
+        &camera_buffer,
     );
 
     // #####################################################################################
@@ -201,14 +214,14 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     });
 
     // #####################################################################################
-
-    let bind_group_layout = generate_bind_group_layout(&device);
+    // ################################ RENDER PIPELINE #########################################
 
     let mut texture = create_texture(&device, size);
 
     let sampler: wgpu::Sampler = generate_sampler(&device);
 
-    let mut bind_group = create_device_bindgroup(&device, &bind_group_layout, &texture, &sampler);
+    let (mut bind_group_layout, mut bind_group) =
+        create_device_bindgroup(&device, &texture, &sampler);
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
@@ -299,34 +312,30 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                             texture = create_texture(&device, size);
 
-                            bind_group = create_device_bindgroup(
-                                &device,
-                                &bind_group_layout,
-                                &texture,
-                                &sampler,
-                            );
+                            (bind_group_layout, bind_group) =
+                                create_device_bindgroup(&device, &texture, &sampler);
 
                             // ###################### COMPUTE RESIZING ##################################
-                            input_data = generate_data(&size);
+                            camera_rays = generate_data(&size);
                             (
                                 output_buffer_size,
                                 input_buffer,
                                 output_buffer,
-                                shader_params,
+                                params_buffer,
                                 staging_buffer,
-                            ) = create_buffers(&device, &input_data, &size);
+                                camera_buffer,
+                            ) = create_buffers(&device, &camera_rays, &size);
 
                             bytes_per_row = calculate_bytes_per_row(&size);
 
-                            compute_bindgroup_layout = create_compute_bindgroup_layout(&device);
-
-                            compute_bind_group = create_compute_bindgroup(
-                                &device,
-                                &compute_bindgroup_layout,
-                                &input_buffer,
-                                &output_buffer,
-                                &shader_params,
-                            );
+                            (compute_bindgroup_layout, compute_bind_group) =
+                                create_compute_bindgroup(
+                                    &device,
+                                    &input_buffer,
+                                    &output_buffer,
+                                    &params_buffer,
+                                    &camera_buffer,
+                                );
                             // ####################################################
 
                             surface.configure(&device, &surface_config);
@@ -412,9 +421,11 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                             // ###################################### update data step ########################################
 
-                            //input_data.shuffle(&mut rng);
-
-                            queue.write_buffer(&input_buffer, 0, bytemuck::cast_slice(&input_data));
+                            //queue.write_buffer(
+                            //    &input_buffer,
+                            //    0,
+                            //    bytemuck::cast_slice(&camera_rays),
+                            //);
 
                             // #############################################################################################
                             // ###################################### compute step ########################################
@@ -682,26 +693,53 @@ fn create_texture(device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) ->
 
 fn create_device_bindgroup(
     device: &wgpu::Device,
-    bind_group_layout: &wgpu::BindGroupLayout,
+
     texture: &wgpu::Texture,
     sampler: &wgpu::Sampler,
-) -> BindGroup {
+) -> (wgpu::BindGroupLayout, BindGroup) {
     let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: bind_group_layout,
+    let texture_bind = 0;
+    let sampler_bind = 1;
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Texture Bind Group Layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: texture_bind,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: sampler_bind,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    });
+
+    let render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &bind_group_layout,
         entries: &[
             wgpu::BindGroupEntry {
-                binding: 0,
+                binding: texture_bind,
                 resource: wgpu::BindingResource::TextureView(&texture_view),
             },
             wgpu::BindGroupEntry {
-                binding: 1,
+                binding: sampler_bind,
                 resource: wgpu::BindingResource::Sampler(sampler),
             },
         ],
         label: Some("Texture Bind Group"),
-    })
+    });
+
+    (bind_group_layout, render_bind_group)
 }
 
 fn setup_renderpass(
@@ -727,30 +765,6 @@ fn setup_renderpass(
     rpass.set_pipeline(render_pipeline);
     rpass.set_bind_group(0, bind_group, &[]);
     rpass.draw(0..6, 0..1);
-}
-
-fn generate_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
-    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("Texture Bind Group Layout"),
-        entries: &[
-            wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            },
-            wgpu::BindGroupLayoutEntry {
-                binding: 1,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                count: None,
-            },
-        ],
-    })
 }
 
 fn create_render_pipeline(
@@ -839,30 +853,36 @@ fn generate_instance() -> Instance {
 
 // ######################### compute ########################################
 
-fn generate_data(size: &winit::dpi::PhysicalSize<u32>) -> Vec<[f32; 4]> {
-    let mut data_vec: Vec<[f32; 4]> = vec![];
+fn generate_data(size: &winit::dpi::PhysicalSize<u32>) -> Vec<Ray> {
+    let mut ray_vec: Vec<Ray> = vec![];
 
     for y in 0..size.height {
+        let y = (y as f32 / size.height as f32) * 2.0 - 1.0;
         for x in 0..size.width {
-            data_vec.push([x as f32, y as f32, 1.0, 0.0]); // last 0 for padding, since GPU expects 16 byte data blocks
+            let x = (x as f32 / size.width as f32) * 2.0 - 1.0;
+
+            let ray = Ray {
+                direction: [x, y, -1.0, 0.0],
+            };
+            ray_vec.push(ray); // last 0 for padding, since GPU expects vec3 and vec4 to be in 16 byte data blocks
         }
     }
 
-    data_vec
+    ray_vec
 }
 
 fn create_buffers(
     device: &wgpu::Device,
-    input_data: &[[f32; 4]],
+    camera_rays: &[Ray],
     size: &winit::dpi::PhysicalSize<u32>,
-) -> (u64, Buffer, Buffer, Buffer, Buffer) {
+) -> (u64, Buffer, Buffer, Buffer, Buffer, Buffer) {
     let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Input Buffer"),
-        contents: bytemuck::cast_slice(input_data),
+        contents: bytemuck::cast_slice(camera_rays),
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
     });
 
-    // 4 bytes of u8 per pixel
+    // 4 bytes of u8 per pixel, RGBA
     let output_buffer_size =
         (size.width * size.height * 4 * std::mem::size_of::<u8>() as u32) as wgpu::BufferAddress;
 
@@ -874,7 +894,10 @@ fn create_buffers(
     });
 
     // Create uniform buffer
-    let params = Params { width: size.width };
+    let params = Params {
+        width: size.width,
+        _padding: [0; 12],
+    };
 
     let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Params Buffer"),
@@ -890,20 +913,44 @@ fn create_buffers(
         mapped_at_creation: false,
     });
 
+    // Create uniform buffer
+    let camera = RayCamera {
+        origin: [0.0, 0.0, 2.0, 0.0],
+        direction: [0.0, 0.0, -1.0, 0.0],
+    };
+
+    let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Params Buffer"),
+        contents: bytemuck::cast_slice(&[camera]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
     (
         output_buffer_size,
         input_buffer,
         output_buffer,
         params_buffer,
         staging_buffer,
+        camera_buffer,
     )
 }
 
-fn create_compute_bindgroup_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
-    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+fn create_compute_bindgroup(
+    device: &wgpu::Device,
+    input_buffer: &Buffer,
+    output_buffer: &Buffer,
+    params_buffer: &Buffer,
+    camera_buffer: &Buffer,
+) -> (wgpu::BindGroupLayout, BindGroup) {
+    let params_bind = 0;
+    let ray_directions_bind = 1;
+    let pixel_colors_bind = 2;
+    let camera_bind = 3;
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         entries: &[
             wgpu::BindGroupLayoutEntry {
-                binding: 0,
+                binding: params_bind,
                 visibility: wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
@@ -913,7 +960,7 @@ fn create_compute_bindgroup_layout(device: &wgpu::Device) -> wgpu::BindGroupLayo
                 count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding: 1,
+                binding: ray_directions_bind,
                 visibility: wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Storage { read_only: true },
@@ -923,7 +970,7 @@ fn create_compute_bindgroup_layout(device: &wgpu::Device) -> wgpu::BindGroupLayo
                 count: None,
             },
             wgpu::BindGroupLayoutEntry {
-                binding: 2,
+                binding: pixel_colors_bind,
                 visibility: wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -932,38 +979,44 @@ fn create_compute_bindgroup_layout(device: &wgpu::Device) -> wgpu::BindGroupLayo
                 },
                 count: None,
             },
-        ],
-        label: None,
-    })
-}
-
-fn create_compute_bindgroup(
-    device: &wgpu::Device,
-    bind_group_layout: &wgpu::BindGroupLayout,
-    input_buffer: &Buffer,
-    output_buffer: &Buffer,
-    shader_params: &Buffer,
-) -> BindGroup {
-    let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: bind_group_layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: shader_params.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: input_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: output_buffer.as_entire_binding(),
+            wgpu::BindGroupLayoutEntry {
+                binding: camera_bind,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
             },
         ],
         label: None,
     });
 
-    compute_bind_group
+    let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: params_bind,
+                resource: params_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: ray_directions_bind,
+                resource: input_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: pixel_colors_bind,
+                resource: output_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: camera_bind,
+                resource: camera_buffer.as_entire_binding(),
+            },
+        ],
+        label: None,
+    });
+
+    (bind_group_layout, compute_bind_group)
 }
 
 fn calculate_bytes_per_row(size: &winit::dpi::PhysicalSize<u32>) -> u32 {
