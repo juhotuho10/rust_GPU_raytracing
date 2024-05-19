@@ -67,12 +67,12 @@ struct SceneSphere {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct SceneMaterial {
-    pub albedo: [f32; 4],         // vec4, aligned to 16 bytes
+    pub albedo: [f32; 3],         // vec4, aligned to 16 bytes
     pub roughness: f32,           // f32, aligned to 4 bytes
     pub metallic: f32,            // f32, aligned to 4 bytes
-    pub emission_color: [f32; 4], // vec4, aligned to 16 bytes
+    pub emission_color: [f32; 3], // vec4, aligned to 16 bytes
     pub emission_power: f32,      // f32, aligned to 4 bytes
-    _padding: [u8; 4],            // padding to ensure 16-byte alignment
+    _padding: [u8; 12],           // padding to ensure 16-byte alignment
 }
 
 pub fn main() {
@@ -94,43 +94,43 @@ pub fn main() {
 
 fn define_render_scene() -> ([SceneMaterial; 4], [SceneSphere; 4]) {
     let shiny_green = SceneMaterial {
-        albedo: vec3_pad(0.1, 0.8, 0.4),
+        albedo: [0.1, 0.8, 0.4],
         roughness: 0.3,
         metallic: 1.0,
-        emission_color: vec3_pad(0.1, 0.8, 0.4),
+        emission_color: [0.1, 0.8, 0.4],
         emission_power: 0.0,
-        _padding: [0; 4],
+        _padding: [0; 12],
     };
 
     let rough_blue = SceneMaterial {
-        albedo: vec3_pad(0.3, 0.2, 0.8),
+        albedo: [0.3, 0.2, 0.8],
         roughness: 0.7,
         metallic: 0.5,
-        emission_color: vec3_pad(0.3, 0.2, 0.8),
+        emission_color: [0.3, 0.2, 0.8],
         emission_power: 0.0,
-        _padding: [0; 4],
+        _padding: [0; 12],
     };
 
     let glossy_pink = SceneMaterial {
-        albedo: vec3_pad(1.0, 0.1, 1.0),
+        albedo: [1.0, 0.1, 1.0],
         roughness: 0.4,
         metallic: 0.8,
-        emission_color: vec3_pad(1.0, 0.1, 1.0),
+        emission_color: [1.0, 0.1, 1.0],
         emission_power: 0.0,
-        _padding: [0; 4],
+        _padding: [0; 12],
     };
 
     let shiny_orange = SceneMaterial {
-        albedo: vec3_pad(1.0, 0.7, 0.0),
+        albedo: [1.0, 0.7, 0.0],
         roughness: 0.7,
         metallic: 0.7,
-        emission_color: vec3_pad(1.0, 0.7, 0.0),
+        emission_color: [1.0, 0.7, 0.0],
         emission_power: 10.0,
-        _padding: [0; 4],
+        _padding: [0; 12],
     };
 
     let sphere_a: SceneSphere = SceneSphere {
-        position: vec3_pad(0., -1., 0.),
+        position: vec3_pad(0., 0., 0.),
         radius: 0.5,
 
         material_index: 2,
@@ -259,7 +259,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let scene = define_scene();
 
-    let mut scene_renderer = Renderer::new(camera, scene);
+    let mut scene_renderer = Renderer::new(camera.clone(), scene);
 
     let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
 
@@ -977,10 +977,28 @@ fn generate_camera_rays(size: &winit::dpi::PhysicalSize<u32>) -> Vec<Ray> {
             let x = (x as f32 / size.width as f32) * 2.0 - 1.0;
 
             let ray = Ray {
-                direction: [x, y, -1.0, 0.0],
+                direction: vec3_pad(x, y, -1.0),
             };
-            ray_vec.push(ray); // last 0 for padding, since GPU expects vec3 and vec4 to be in 16 byte data blocks
+
+            ray_vec.push(ray);
         }
+    }
+
+    ray_vec
+}
+
+fn generate_new_camera_rays(camera: &Camera) -> Vec<Ray> {
+    let mut ray_vec: Vec<Ray> = vec![];
+
+    let rays = camera.ray_directions.clone();
+
+    for ray in rays {
+        let direction = ray.direction;
+        let new_ray = Ray {
+            direction: vec3_pad(direction.x, direction.y, direction.z),
+        };
+
+        ray_vec.push(new_ray)
     }
 
     ray_vec
@@ -1032,8 +1050,8 @@ fn create_buffers(
 
     // Create uniform buffer
     let camera = RayCamera {
-        origin: [0.0, 0.0, 5.0, 0.0],
-        direction: [0.0, 0.0, -1.0, 0.0],
+        origin: vec3_pad(0., 0.0, 10.),
+        direction: vec3_pad(0.0, 0.0, -1.0),
     };
 
     let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

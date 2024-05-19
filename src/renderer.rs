@@ -181,7 +181,7 @@ impl Renderer {
 
         let mut seed = (index as u32) * (self.accumulation_index as u32 * 326624);
 
-        for i in 0..bounces {
+        for _ in 0..bounces {
             let hit_payload = &self.trace_ray(&ray);
 
             if hit_payload.hit_distance < 0. {
