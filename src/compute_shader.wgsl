@@ -130,7 +130,7 @@ fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
     var light = vec3<f32>(0.0, 0.0, 0.0);
     let accumulation_index: u32 = 1u;
     //let skycolor = vec3<f32>(0., 0.04, 0.1);
-    let skycolor = vec3<f32>(1.0, 0.0, 0.0);
+    let skycolor = vec3<f32>(0.0, 0.04, 0.1);
 
     var seed: u32 = index * accumulation_index * 326624u;
 
@@ -140,6 +140,7 @@ fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
 
         if hit_payload.hit_distance < 0 {
             light += skycolor * light_contribution;
+            break;
         }
 
         let hit_idex: u32 = hit_payload.object_index;
@@ -157,7 +158,7 @@ fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
 
     }
 
-    return light_contribution;
+    return light;
 
 }
 
@@ -197,7 +198,7 @@ fn trace_ray(ray: Ray) -> HitPayload{
 
         let current_t: f32 = (-b - sqrt(discriminant)) / (2. * a);
 
-        if current_t > 0.0 && current_t < hit_distance {
+        if (current_t > 0.0) && (current_t < hit_distance) {
             hit_distance = current_t;
             closest_sphere_index = sphere_index;
         }
@@ -207,7 +208,7 @@ fn trace_ray(ray: Ray) -> HitPayload{
     if closest_sphere_index < 0 {
         return miss(ray);
     } else{
-        return closest_hit(ray, hit_distance, closest_sphere_index);
+        return closest_hit(ray, hit_distance, u32(closest_sphere_index));
     }
 
     
@@ -225,7 +226,7 @@ fn miss(ray: Ray) -> HitPayload{
     );
 }
 
-fn closest_hit(ray: Ray, hit_distance: f32, object_index: i32) -> HitPayload{
+fn closest_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
     let closest_sphere: SceneSphere = sphere_array[object_index];
 
     let hit_point: vec3<f32> = ray.origin + ray.direction * hit_distance;
@@ -235,6 +236,6 @@ fn closest_hit(ray: Ray, hit_distance: f32, object_index: i32) -> HitPayload{
     return HitPayload(hit_distance, 
     hit_point,
     sphere_normal,
-    u32(object_index)
+    object_index
     );
 }
