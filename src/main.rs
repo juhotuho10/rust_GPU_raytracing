@@ -58,19 +58,19 @@ struct Ray {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct SceneSphere {
-    pub position: [f32; 4],  // vec4, aligned to 16 bytes
+    pub position: [f32; 3],  // vec3, aligned to 12 bytes
     pub radius: f32,         // f32, aligned to 4 bytes
-    pub material_index: u32, //u32, aligned to 4 bytes
-    _padding: [u8; 8],       // padding to ensure 16-byte alignment
+    pub material_index: u32, // u32, aligned to 4 bytes
+    _padding: [u8; 12],      // padding to ensure 16-byte alignment
 }
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct SceneMaterial {
-    pub albedo: [f32; 3],         // vec4, aligned to 16 bytes
+    pub albedo: [f32; 3],         // vec3, aligned to 12 bytes
     pub roughness: f32,           // f32, aligned to 4 bytes
+    pub emission_color: [f32; 3], // vec3, aligned to 12 bytes
     pub metallic: f32,            // f32, aligned to 4 bytes
-    pub emission_color: [f32; 3], // vec4, aligned to 16 bytes
     pub emission_power: f32,      // f32, aligned to 4 bytes
     _padding: [u8; 12],           // padding to ensure 16-byte alignment
 }
@@ -96,17 +96,17 @@ fn define_render_scene() -> ([SceneMaterial; 4], [SceneSphere; 4]) {
     let shiny_green = SceneMaterial {
         albedo: [0.1, 0.8, 0.4],
         roughness: 0.3,
-        metallic: 1.0,
         emission_color: [0.1, 0.8, 0.4],
-        emission_power: 0.0,
+        metallic: 1.0,
+        emission_power: 0.2,
         _padding: [0; 12],
     };
 
     let rough_blue = SceneMaterial {
         albedo: [0.3, 0.2, 0.8],
         roughness: 0.7,
-        metallic: 0.5,
         emission_color: [0.3, 0.2, 0.8],
+        metallic: 0.5,
         emission_power: 0.0,
         _padding: [0; 12],
     };
@@ -114,52 +114,52 @@ fn define_render_scene() -> ([SceneMaterial; 4], [SceneSphere; 4]) {
     let glossy_pink = SceneMaterial {
         albedo: [1.0, 0.1, 1.0],
         roughness: 0.4,
-        metallic: 0.8,
         emission_color: [1.0, 0.1, 1.0],
-        emission_power: 0.0,
+        metallic: 0.8,
+        emission_power: 0.4,
         _padding: [0; 12],
     };
 
     let shiny_orange = SceneMaterial {
         albedo: [1.0, 0.7, 0.0],
         roughness: 0.7,
-        metallic: 0.7,
         emission_color: [1.0, 0.7, 0.0],
+        metallic: 0.7,
         emission_power: 10.0,
         _padding: [0; 12],
     };
 
     let sphere_a: SceneSphere = SceneSphere {
-        position: vec3_pad(0., 0., 0.),
+        position: [0., 0., 0.],
         radius: 0.5,
 
         material_index: 2,
-        _padding: [0; 8],
+        _padding: [0; 12],
     };
 
     let sphere_b: SceneSphere = SceneSphere {
-        position: vec3_pad(-3., -2.0, 3.),
+        position: [-3., -2.0, 3.],
         radius: 2.0,
 
         material_index: 0,
-        _padding: [0; 8],
+        _padding: [0; 12],
     };
 
     let shiny_sphere: SceneSphere = SceneSphere {
-        position: vec3_pad(3., -15.0, -5.),
+        position: [3., -15.0, -5.],
         radius: 7.0,
 
         material_index: 3,
-        _padding: [0; 8],
+        _padding: [0; 12],
     };
 
     // sphere to act as a floor
     let floor: SceneSphere = SceneSphere {
-        position: vec3_pad(0., 500., 0.),
+        position: [0., 500., 0.],
         radius: 500.,
 
         material_index: 1,
-        _padding: [0; 8],
+        _padding: [0; 12],
     };
 
     (
@@ -174,7 +174,7 @@ fn define_scene() -> RenderScene {
         roughness: 0.3,
         metallic: 1.0,
         emission_color: vec3a(0.1, 0.8, 0.4),
-        emission_power: 0.0,
+        emission_power: 0.2,
     };
 
     let rough_blue = Material {
@@ -1050,7 +1050,7 @@ fn create_buffers(
 
     // Create uniform buffer
     let camera = RayCamera {
-        origin: vec3_pad(0., 0.0, 10.),
+        origin: vec3_pad(0., -7.0, 25.),
         direction: vec3_pad(0.0, 0.0, -1.0),
     };
 

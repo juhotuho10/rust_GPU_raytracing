@@ -29,7 +29,6 @@ struct SceneMaterial {
     _padding3: u32,             
 }
 
-
 struct SceneSphere {
     position: vec3<f32>,  
     radius: f32,         
@@ -37,7 +36,8 @@ struct SceneSphere {
 
      // explicit padding to match 16 byte alignment
     _padding1: u32,
-    _padding2: u32,      
+    _padding2: u32,
+    _padding3: u32,       
 }
 
 
@@ -70,12 +70,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let bounces: u32 = 4u;
 
-    //let f32_color: vec3<f32> = per_pixel(index, bounces);
+    let f32_color: vec3<f32> = per_pixel(index, bounces);
 
-    //output_data[index] = pack_to_u32(f32_color);
+    output_data[index] = pack_to_u32(f32_color);
     
 
-    let ray_origin = ray_camera.origin;
+    /*let ray_origin = ray_camera.origin;
     let ray_direction = camera_rays[index];
     let radius = 0.5;
 
@@ -89,7 +89,16 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         output_data[index] = pack_to_u32(vec3<f32>(1.0, 0.0, 1.0)); // red
     } else {
         output_data[index] = pack_to_u32(vec3<f32>(0.0, 0.0, 0.0)); // black
-    }
+    }*/
+
+
+
+    //if ray_camera.origin.z == 25.0 {
+    //    output_data[index] = pack_to_u32(vec3<f32>(0.0, 1.0, 0.0)); // green
+    //} else {
+    //    output_data[index] = pack_to_u32(vec3<f32>(1.0, 0.0, 0.0)); // red
+    //};
+
 
 
 }
@@ -120,7 +129,8 @@ fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
     var light_contribution = vec3<f32>(1.0, 1.0, 1.0);
     var light = vec3<f32>(0.0, 0.0, 0.0);
     let accumulation_index: u32 = 1u;
-    let skycolor = vec3<f32>(0., 0.04, 0.1);
+    //let skycolor = vec3<f32>(0., 0.04, 0.1);
+    let skycolor = vec3<f32>(1.0, 0.0, 0.0);
 
     var seed: u32 = index * accumulation_index * 326624u;
 
