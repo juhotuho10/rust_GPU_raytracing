@@ -13,11 +13,36 @@ struct RayCamera {
     direction: vec3<f32>,  
 };
 
+struct SceneMaterial {
+    albedo: vec3<f32>,         
+    roughness: f32,           
+    metallic: f32,            
+    emission_color: vec3<f32>, 
+    emission_power: f32,      
+    
+     // explicit padding to match 16 byte alignment
+    _padding1: u32,           
+}
+
+
+struct SceneSphere {
+    position: vec3<f32>,  
+    radius: f32,         
+    material_index: u32, 
+
+     // explicit padding to match 16 byte alignment
+    _padding1: u32,
+    _padding2: u32,      
+}
+
+
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> camera_rays: array<vec3<f32>>;
 @group(0) @binding(2) var<storage, read_write> output_data: array<u32>;
 @group(0) @binding(3) var<uniform> ray_camera: RayCamera;
+@group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, 4>;
+@group(0) @binding(5) var<uniform> sphere_array: array<SceneSphere, 4>;
 
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {

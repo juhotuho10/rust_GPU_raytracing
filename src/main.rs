@@ -31,6 +31,10 @@ use std::time::Instant;
 
 use futures::executor::block_on;
 
+fn vec3_pad(x: f32, y: f32, z: f32) -> [f32; 4] {
+    [x, y, z, 0.0]
+}
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct Params {
@@ -47,8 +51,28 @@ struct RayCamera {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Ray {
+struct Ray {
     pub direction: [f32; 4], // vec4, aligned to 16 bytes
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct SceneSphere {
+    pub position: [f32; 4],  // vec4, aligned to 16 bytes
+    pub radius: f32,         // f32, aligned to 4 bytes
+    pub material_index: u32, //u32, aligned to 4 bytes
+    _padding: [u8; 8],       // padding to ensure 16-byte alignment
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct SceneMaterial {
+    pub albedo: [f32; 4],         // vec4, aligned to 16 bytes
+    pub roughness: f32,           // f32, aligned to 4 bytes
+    pub metallic: f32,            // f32, aligned to 4 bytes
+    pub emission_color: [f32; 4], // vec4, aligned to 16 bytes
+    pub emission_power: f32,      // f32, aligned to 4 bytes
+    _padding: [u8; 4],            // padding to ensure 16-byte alignment
 }
 
 pub fn main() {
@@ -66,6 +90,82 @@ pub fn main() {
     window.set_resizable(false);
     env_logger::init();
     pollster::block_on(run(event_loop, window));
+}
+
+fn define_render_scene() -> ([SceneMaterial; 4], [SceneSphere; 4]) {
+    let shiny_green = SceneMaterial {
+        albedo: vec3_pad(0.1, 0.8, 0.4),
+        roughness: 0.3,
+        metallic: 1.0,
+        emission_color: vec3_pad(0.1, 0.8, 0.4),
+        emission_power: 0.0,
+        _padding: [0; 4],
+    };
+
+    let rough_blue = SceneMaterial {
+        albedo: vec3_pad(0.3, 0.2, 0.8),
+        roughness: 0.7,
+        metallic: 0.5,
+        emission_color: vec3_pad(0.3, 0.2, 0.8),
+        emission_power: 0.0,
+        _padding: [0; 4],
+    };
+
+    let glossy_pink = SceneMaterial {
+        albedo: vec3_pad(1.0, 0.1, 1.0),
+        roughness: 0.4,
+        metallic: 0.8,
+        emission_color: vec3_pad(1.0, 0.1, 1.0),
+        emission_power: 0.0,
+        _padding: [0; 4],
+    };
+
+    let shiny_orange = SceneMaterial {
+        albedo: vec3_pad(1.0, 0.7, 0.0),
+        roughness: 0.7,
+        metallic: 0.7,
+        emission_color: vec3_pad(1.0, 0.7, 0.0),
+        emission_power: 10.0,
+        _padding: [0; 4],
+    };
+
+    let sphere_a: SceneSphere = SceneSphere {
+        position: vec3_pad(0., -1., 0.),
+        radius: 0.5,
+
+        material_index: 2,
+        _padding: [0; 8],
+    };
+
+    let sphere_b: SceneSphere = SceneSphere {
+        position: vec3_pad(-3., -2.0, 3.),
+        radius: 2.0,
+
+        material_index: 0,
+        _padding: [0; 8],
+    };
+
+    let shiny_sphere: SceneSphere = SceneSphere {
+        position: vec3_pad(3., -15.0, -5.),
+        radius: 7.0,
+
+        material_index: 3,
+        _padding: [0; 8],
+    };
+
+    // sphere to act as a floor
+    let floor: SceneSphere = SceneSphere {
+        position: vec3_pad(0., 500., 0.),
+        radius: 500.,
+
+        material_index: 1,
+        _padding: [0; 8],
+    };
+
+    (
+        [shiny_green, rough_blue, glossy_pink, shiny_orange],
+        [sphere_a, sphere_b, shiny_sphere, floor],
+    )
 }
 
 fn define_scene() -> RenderScene {
@@ -172,7 +272,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     // ################################ GPU DATA PIPELINE #########################################
 
-    let mut camera_rays = generate_data(&size);
+    let mut camera_rays: Vec<Ray> = generate_camera_rays(&size);
+    let (material_array, sphere_array) = define_render_scene();
 
     let (
         mut output_buffer_size,
@@ -181,7 +282,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         mut params_buffer,
         mut staging_buffer,
         mut camera_buffer,
-    ) = create_buffers(&device, &camera_rays, &size);
+        mut material_buffer,
+        mut sphere_buffer,
+    ) = create_buffers(&device, &size, &camera_rays, &material_array, &sphere_array);
 
     let mut bytes_per_row = calculate_bytes_per_row(&size);
 
@@ -191,6 +294,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         &output_buffer,
         &params_buffer,
         &camera_buffer,
+        &material_buffer,
+        &sphere_buffer,
     );
 
     // #####################################################################################
@@ -316,7 +421,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 create_device_bindgroup(&device, &texture, &sampler);
 
                             // ###################### COMPUTE RESIZING ##################################
-                            camera_rays = generate_data(&size);
+                            camera_rays = generate_camera_rays(&size);
                             (
                                 output_buffer_size,
                                 input_buffer,
@@ -324,7 +429,15 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 params_buffer,
                                 staging_buffer,
                                 camera_buffer,
-                            ) = create_buffers(&device, &camera_rays, &size);
+                                material_buffer,
+                                sphere_buffer,
+                            ) = create_buffers(
+                                &device,
+                                &size,
+                                &camera_rays,
+                                &material_array,
+                                &sphere_array,
+                            );
 
                             bytes_per_row = calculate_bytes_per_row(&size);
 
@@ -335,6 +448,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     &output_buffer,
                                     &params_buffer,
                                     &camera_buffer,
+                                    &material_buffer,
+                                    &sphere_buffer,
                                 );
                             // ####################################################
 
@@ -853,7 +968,7 @@ fn generate_instance() -> Instance {
 
 // ######################### compute ########################################
 
-fn generate_data(size: &winit::dpi::PhysicalSize<u32>) -> Vec<Ray> {
+fn generate_camera_rays(size: &winit::dpi::PhysicalSize<u32>) -> Vec<Ray> {
     let mut ray_vec: Vec<Ray> = vec![];
 
     for y in 0..size.height {
@@ -873,9 +988,11 @@ fn generate_data(size: &winit::dpi::PhysicalSize<u32>) -> Vec<Ray> {
 
 fn create_buffers(
     device: &wgpu::Device,
-    camera_rays: &[Ray],
     size: &winit::dpi::PhysicalSize<u32>,
-) -> (u64, Buffer, Buffer, Buffer, Buffer, Buffer) {
+    camera_rays: &[Ray],
+    material_array: &[SceneMaterial],
+    sphere_array: &[SceneSphere],
+) -> (u64, Buffer, Buffer, Buffer, Buffer, Buffer, Buffer, Buffer) {
     let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Input Buffer"),
         contents: bytemuck::cast_slice(camera_rays),
@@ -915,13 +1032,25 @@ fn create_buffers(
 
     // Create uniform buffer
     let camera = RayCamera {
-        origin: [0.0, 0.0, 2.0, 0.0],
+        origin: [0.0, 0.0, 5.0, 0.0],
         direction: [0.0, 0.0, -1.0, 0.0],
     };
 
     let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Params Buffer"),
+        label: Some("Camera Buffer"),
         contents: bytemuck::cast_slice(&[camera]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let material_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Material Buffer"),
+        contents: bytemuck::cast_slice(material_array),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let sphere_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Sphere Buffer"),
+        contents: bytemuck::cast_slice(sphere_array),
         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     });
 
@@ -932,6 +1061,8 @@ fn create_buffers(
         params_buffer,
         staging_buffer,
         camera_buffer,
+        material_buffer,
+        sphere_buffer,
     )
 }
 
@@ -941,11 +1072,15 @@ fn create_compute_bindgroup(
     output_buffer: &Buffer,
     params_buffer: &Buffer,
     camera_buffer: &Buffer,
+    material_buffer: &Buffer,
+    sphere_buffer: &Buffer,
 ) -> (wgpu::BindGroupLayout, BindGroup) {
     let params_bind = 0;
     let ray_directions_bind = 1;
     let pixel_colors_bind = 2;
     let camera_bind = 3;
+    let material_bind = 4;
+    let sphere_bind = 5;
 
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         entries: &[
@@ -989,6 +1124,26 @@ fn create_compute_bindgroup(
                 },
                 count: None,
             },
+            wgpu::BindGroupLayoutEntry {
+                binding: material_bind,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: sphere_bind,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
         ],
         label: None,
     });
@@ -1011,6 +1166,14 @@ fn create_compute_bindgroup(
             wgpu::BindGroupEntry {
                 binding: camera_bind,
                 resource: camera_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: material_bind,
+                resource: material_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: sphere_bind,
+                resource: sphere_buffer.as_entire_binding(),
             },
         ],
         label: None,

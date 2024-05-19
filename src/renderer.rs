@@ -16,7 +16,6 @@ struct HitPayload {
     object_index: usize,
 }
 
-#[derive(Debug)]
 pub struct Renderer {
     pub camera: Camera,
     pub scene: RenderScene,
@@ -24,7 +23,7 @@ pub struct Renderer {
     pub light_mode: u32,
     accumulated_image: Vec<Vec3A>,
     accumulation_index: f32,
-    thread_pool: ThreadPool,
+    pub thread_pool: ThreadPool,
 }
 
 impl Renderer {
