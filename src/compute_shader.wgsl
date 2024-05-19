@@ -20,7 +20,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 }
 
 fn pack_to_u32(x: f32, y: f32, z: f32) -> u32 {
-  // scale the f32 values from [0.0, 1.0] to [0, 255]
+  // scale the f32 values from [0.0, 1.0] to [0.0, 255.0]
     let scaled_x: u32 = u32(x * 255.0);
     let scaled_y: u32 = u32(y * 255.0);
     let scaled_z: u32 = u32(z * 255.0);
@@ -30,6 +30,6 @@ fn pack_to_u32(x: f32, y: f32, z: f32) -> u32 {
     let byte1: u32 = scaled_y & 0xFFu;
     let byte2: u32 = scaled_z & 0xFFu;
 
-    // pack the bits into a single u32
+    // pack the bits into a single u32 that will then be read as 4x u8 by the rendering pass
     return (byte0 << 0) | (byte1 << 8) | (byte2 << 16) | (255u << 24);
 }

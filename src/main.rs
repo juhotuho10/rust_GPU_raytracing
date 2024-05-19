@@ -8,27 +8,27 @@ use Scene::{Material, RenderScene, Sphere};
 use egui::{pos2, Color32, DragValue, Frame, FullOutput};
 
 use renderer::Renderer;
-use std::{borrow::Cow, io::Read, time};
+
 use wgpu::{
     include_wgsl, util::DeviceExt, Adapter, Backends, BindGroup, Buffer, Device, Dx12Compiler,
     Gles3MinorVersion, Instance, InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface,
-    SurfaceConfiguration, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
+
 use winit::{
-    dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
+    dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, Event, KeyEvent, MouseButton, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    keyboard::{Key, KeyCode, PhysicalKey},
+    event_loop::EventLoop,
+    keyboard::{KeyCode, PhysicalKey},
     window::{CursorGrabMode, Window},
 };
 
 use egui_wgpu_backend::{RenderPass as EguiRenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
-use glam::{vec3a, Vec3A};
+use glam::vec3a;
 
 use std::time::Instant;
 
-use futures::channel::oneshot;
 use futures::executor::block_on;
 
 #[repr(C)]
@@ -184,10 +184,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     // ################################ GPU COMPUTE PIPELINE #########################################
 
-    let compute_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: None,
-        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("compute_shader.wgsl"))),
-    });
+    let compute_module = device.create_shader_module(include_wgsl!("compute_shader.wgsl"));
 
     let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Compute Pipeline Layout"),
@@ -262,6 +259,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     event_loop
         .run(/*move*/ |event, target| {
             // Have the closure take ownership of the resources.
+
             // `event_loop.run` never returns, therefore we must do this to ensure
             // the resources are properly cleaned up.
 
@@ -411,6 +409,14 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     ))
                                     .expect("couldn't set cursor pos");
                             }
+
+                            // ###################################### update data step ########################################
+
+                            //input_data.shuffle(&mut rng);
+
+                            queue.write_buffer(&input_buffer, 0, bytemuck::cast_slice(&input_data));
+
+                            // #############################################################################################
                             // ###################################### compute step ########################################
 
                             let mut compute_encoder =
@@ -753,10 +759,7 @@ fn create_render_pipeline(
     swapchain_format: TextureFormat,
 ) -> wgpu::RenderPipeline {
     // Load the shaders from disk
-    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: None,
-        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("render_shader.wgsl"))),
-    });
+    let shader = device.create_shader_module(include_wgsl!("render_shader.wgsl"));
 
     let render_pipeline: wgpu::RenderPipeline =
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -856,7 +859,7 @@ fn create_buffers(
     let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Input Buffer"),
         contents: bytemuck::cast_slice(input_data),
-        usage: wgpu::BufferUsages::STORAGE,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
     });
 
     // 4 bytes of u8 per pixel
