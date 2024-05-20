@@ -12,7 +12,9 @@ struct Params {
 
 struct RayCamera {
     origin: vec3<f32>,    
-    direction: vec3<f32>,  
+
+    // explicit padding to match 16 byte alignment
+     _padding1: u32,
 };
 
 struct SceneMaterial {

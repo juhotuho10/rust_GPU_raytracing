@@ -1,6 +1,6 @@
-use crate::buffers::{Params, SceneMaterial, SceneSphere};
+use crate::buffers::{Params, RayCamera, SceneMaterial, SceneSphere};
 
-use super::camera::{Camera, Ray};
+use super::camera::Camera;
 use super::Scene::RenderScene;
 
 use super::buffers;
@@ -11,7 +11,6 @@ use glam::{vec3a, Vec3A};
 
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 
-use wgpu::core::device;
 use wgpu::{BindGroup, BindGroupLayout, Device, Queue, Texture};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -21,24 +20,6 @@ struct HitPayload {
     world_normal: Vec3A,
 
     object_index: usize,
-}
-
-fn generate_new_camera_rays(camera: &Camera) -> Vec<buffers::Ray> {
-    let mut ray_vec: Vec<buffers::Ray> = vec![];
-
-    let rays = camera.ray_directions.clone();
-
-    for ray in rays {
-        let direction = ray.direction;
-        let new_ray = buffers::Ray {
-            direction: [direction.x, direction.y, direction.z],
-            _padding: [0; 4],
-        };
-
-        ray_vec.push(new_ray)
-    }
-
-    ray_vec
 }
 
 pub struct Renderer {
@@ -72,10 +53,10 @@ impl Renderer {
             .build()
             .expect("couldn't construct threadpool");
 
-        let camera_rays = generate_new_camera_rays(&camera);
+        let camera_rays = camera.recalculate_ray_directions();
 
         let (buffers, bind_group_layout, compute_bind_group) = buffers::DataBuffers::new(
-            &device,
+            device,
             size,
             &camera_rays,
             material_array,
@@ -83,7 +64,7 @@ impl Renderer {
             params,
         );
 
-        let mut renderer = Renderer {
+        let renderer = Renderer {
             camera,
             scene,
 
@@ -95,13 +76,11 @@ impl Renderer {
             buffers,
         };
 
-        //renderer.reset_accumulation();
-
         (renderer, bind_group_layout, compute_bind_group)
     }
 
     pub fn _generate_pixels(&mut self, device: &Device, queue: &Queue) -> Vec<u8> {
-        let ray_directions = &self.camera.ray_directions;
+        let ray_directions = &self.camera.recalculate_ray_directions();
 
         let mut pixel_rgba: Vec<u8> = Vec::with_capacity(ray_directions.len() * 4);
 
@@ -153,7 +132,7 @@ impl Renderer {
         pixel_colors
     }*/
 
-    fn _trace_ray(&self, ray: &Ray) -> HitPayload {
+    /*fn _trace_ray(&self, ray: &Ray) -> HitPayload {
         // (bx^2 + by^2)t^2 + 2*(axbx + ayby)t + (ax^2 + by^2 - r^2) = 0
         // where
         // a = ray origin
@@ -198,9 +177,9 @@ impl Renderer {
             None => self._miss(ray),
             Some(sphere_index) => self._closest_hit(ray, hit_distance, sphere_index),
         }
-    }
+    }*/
 
-    fn _closest_hit(&self, ray: &Ray, hit_distance: f32, object_index: usize) -> HitPayload {
+    /*fn _closest_hit(&self, ray: &Ray, hit_distance: f32, object_index: usize) -> HitPayload {
         let closest_sphere = &self.scene.spheres[object_index];
 
         //let origin = ray.origin - closest_sphere.position;
@@ -213,19 +192,10 @@ impl Renderer {
             world_normal: sphere_normal,
             object_index,
         }
-    }
-
-    fn _miss(&self, _ray: &Ray) -> HitPayload {
-        HitPayload {
-            hit_distance: -1.0,
-            world_position: Vec3A::splat(0.),
-            world_normal: Vec3A::splat(0.),
-            object_index: 0,
-        }
-    }
+    }*/
 
     fn _per_pixel(&self, index: usize, bounces: u8) -> Vec3A {
-        let mut ray = self.camera.ray_directions[index];
+        /*let mut ray = self.camera.recalculate_ray_directions();
         let mut light_contribution = Vec3A::splat(1.0);
         let mut light = Vec3A::splat(0.0);
 
@@ -284,8 +254,8 @@ impl Renderer {
                 }
             }
         }
-
-        light
+        */
+        Vec3A::splat(0.0)
     }
 
     fn _reflect_ray(&self, ray: Vec3A, normal: Vec3A) -> Vec3A {
@@ -317,8 +287,23 @@ impl Renderer {
         egui_context: &Context,
     ) {
         let moved = self.camera.on_update(mouse_delta, timestep, egui_context);
+
         if moved {
-            self.reset_accumulation(device, queue)
+            self.reset_accumulation(device, queue);
+            let new_rays = self.camera.recalculate_ray_directions();
+
+            let new_camera = RayCamera {
+                origin: self.camera.position.into(),
+                _padding: [0; 4],
+            };
+
+            queue.write_buffer(
+                &self.buffers.camera_buffer,
+                0,
+                bytemuck::cast_slice(&[new_camera]),
+            );
+
+            queue.write_buffer(&self.buffers.ray_buffer, 0, bytemuck::cast_slice(&new_rays));
         };
     }
 
@@ -332,6 +317,18 @@ impl Renderer {
         queue.submit(Some(buffer_encoder.finish()));
 
         self.accumulation_index = 1;
+
+        let params = Params {
+            width: self.camera.viewport_width,
+            accumulation_index: self.accumulation_index,
+            _padding: [0; 8],
+        };
+
+        queue.write_buffer(
+            &self.buffers.params_buffer,
+            0,
+            bytemuck::cast_slice(&[params]),
+        );
     }
 
     fn _pcg_hash(&self, seed: &mut u32) -> f32 {
@@ -372,8 +369,6 @@ impl Renderer {
         let height = self.camera.viewport_height;
 
         if self.accumulate {
-            self.accumulation_index += 1;
-
             let params = Params {
                 width,
                 accumulation_index: self.accumulation_index,
@@ -385,6 +380,8 @@ impl Renderer {
                 0,
                 bytemuck::cast_slice(&[params]),
             );
+
+            self.accumulation_index += 1;
         }
         // ###################################### compute step ########################################
 

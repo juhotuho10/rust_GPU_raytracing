@@ -959,7 +959,7 @@ fn create_ui(
         });
 
     if interacted {
-        screne_renderer.reset_accumulation(&device, &queue)
+        screne_renderer.reset_accumulation(device, queue)
     }
 
     egui_context.end_frame()

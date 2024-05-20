@@ -1,18 +1,12 @@
+use super::buffers::Ray;
 use egui::Context;
 use glam::{vec2, vec3a, vec4, Mat4, Quat, Vec2, Vec3A, Vec4};
 use rayon::prelude::*;
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Ray {
-    pub origin: Vec3A,
-    pub direction: Vec3A,
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Camera {
     pub position: Vec3A,
     pub direction: Vec3A,
-    pub ray_directions: Vec<Ray>,
 
     near_clip: f32,
     far_clip: f32,
@@ -35,17 +29,16 @@ impl Camera {
         let mut camera = Camera {
             position: vec3a(0., -7.0, 25.),
             direction: vec3a(0., 0., -1.),
-            ray_directions: vec![],
 
             viewport_width: width,
             viewport_height: height,
 
             near_clip: 0.1,
             far_clip: 100.0,
-            vertical_fov: 60.0,
+            vertical_fov: 45.0,
 
-            movement_speed: 0.05,
-            turning_speed: 0.002,
+            movement_speed: 0.5,
+            turning_speed: 0.001,
 
             projection: Mat4::from_cols_slice(&[1.0; 16]),
             inverse_projection: Mat4::from_cols_slice(&[1.0; 16]),
@@ -126,9 +119,7 @@ impl Camera {
 
         if moved {
             self.recalculate_view();
-            self.recalculate_ray_directions();
         }
-
         moved
     }
 
@@ -150,15 +141,7 @@ impl Camera {
         self.inverse_view = self.view.inverse();
     }
 
-    pub fn recalculate_ray_directions(&mut self) {
-        self.ray_directions.resize(
-            (self.viewport_width * self.viewport_height) as usize,
-            Ray {
-                origin: Vec3A::splat(0.),
-                direction: Vec3A::splat(0.),
-            },
-        );
-
+    pub fn recalculate_ray_directions(&self) -> Vec<Ray> {
         // converting normalized -1 to 1 directions into worldspace directions
         /*for y in 0..self.viewport_height {
             let y_coord = y as f32 / self.viewport_height as f32;
@@ -217,15 +200,15 @@ impl Camera {
 
                         // caching the ray directions so we dont need to calculate them every frame
                         Ray {
-                            origin: self.position,
-                            direction: ray_direction,
+                            direction: ray_direction.into(),
+                            _padding: [0; 4],
                         }
                     })
                     .collect::<Vec<Ray>>()
             })
             .collect();
 
-        self.ray_directions = new_ray_directions;
+        new_ray_directions
     }
 
     pub fn on_resize(&mut self, width: u32, height: u32) {

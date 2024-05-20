@@ -14,9 +14,9 @@ pub struct Params {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct RayCamera {
-    pub origin: [f32; 4],    // vec4, aligned to 16 bytes
-    pub direction: [f32; 4], // vec4, aligned to 16 bytes
+pub struct RayCamera {
+    pub origin: [f32; 3],  // vec3, aligned to 16 bytes
+    pub _padding: [u8; 4], // padding to ensure 16-byte alignment
 }
 
 #[repr(C)]
@@ -49,7 +49,7 @@ pub struct SceneMaterial {
 pub struct DataBuffers {
     pub output_buffer_size: u64,
     pub accumulation_buffer_size: u64,
-    pub input_buffer: Buffer,
+    pub ray_buffer: Buffer,
     pub output_buffer: Buffer,
     pub params_buffer: Buffer,
     pub staging_buffer: Buffer,
@@ -68,8 +68,8 @@ impl DataBuffers {
         sphere_array: &[SceneSphere],
         params: &[Params],
     ) -> (DataBuffers, BindGroupLayout, BindGroup) {
-        let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Input Buffer"),
+        let ray_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Ray Buffer"),
             contents: bytemuck::cast_slice(camera_rays),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
@@ -101,8 +101,8 @@ impl DataBuffers {
 
         // Create uniform buffer
         let camera = RayCamera {
-            origin: vec3_pad(-7.0, -7.0, 25.),
-            direction: vec3_pad(0.0, 0.0, -1.0),
+            origin: [-7.0, -7.0, 25.],
+            _padding: [0; 4],
         };
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -138,7 +138,7 @@ impl DataBuffers {
         let buffers = DataBuffers {
             output_buffer_size,
             accumulation_buffer_size,
-            input_buffer,
+            ray_buffer,
             output_buffer,
             params_buffer,
             staging_buffer,
@@ -250,7 +250,7 @@ impl DataBuffers {
                 },
                 wgpu::BindGroupEntry {
                     binding: ray_directions_bind,
-                    resource: self.input_buffer.as_entire_binding(),
+                    resource: self.ray_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: pixel_colors_bind,
