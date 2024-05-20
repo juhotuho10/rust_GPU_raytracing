@@ -1,18 +1,15 @@
-mod Scene;
 mod buffers;
 mod camera;
 mod renderer;
 
 use buffers::{Params, SceneMaterial, SceneSphere};
 use camera::Camera;
-use Scene::{Material, RenderScene, Sphere};
 
 use egui::{pos2, Color32, DragValue, Frame, FullOutput};
 
-use renderer::Renderer;
+use renderer::{RenderScene, Renderer};
 
 use wgpu::{
-    core::device::{self, queue},
     include_wgsl, Adapter, Backends, BindGroup, Device, Dx12Compiler, Gles3MinorVersion, Instance,
     InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface, TextureDescriptor,
     TextureDimension, TextureFormat, TextureUsages,
@@ -49,7 +46,7 @@ pub fn main() {
     pollster::block_on(run(event_loop, window));
 }
 
-fn define_render_scene() -> ([SceneMaterial; 4], [SceneSphere; 4]) {
+fn define_render_scene() -> RenderScene {
     let shiny_green = SceneMaterial {
         albedo: [0.1, 0.8, 0.4],
         roughness: 0.3,
@@ -119,81 +116,11 @@ fn define_render_scene() -> ([SceneMaterial; 4], [SceneSphere; 4]) {
         _padding: [0; 12],
     };
 
-    (
-        [shiny_green, rough_blue, glossy_pink, shiny_orange],
-        [sphere_a, sphere_b, shiny_sphere, floor],
-    )
-}
-
-fn define_scene() -> RenderScene {
-    let shiny_green = Material {
-        albedo: vec3a(0.1, 0.8, 0.4),
-        roughness: 0.3,
-        metallic: 1.0,
-        emission_color: vec3a(0.1, 0.8, 0.4),
-        emission_power: 0.2,
-    };
-
-    let rough_blue = Material {
-        albedo: vec3a(0.3, 0.2, 0.8),
-        roughness: 0.7,
-        metallic: 0.5,
-        emission_color: vec3a(0.3, 0.2, 0.8),
-        emission_power: 0.0,
-    };
-
-    let glossy_pink = Material {
-        albedo: vec3a(1.0, 0.1, 1.0),
-        roughness: 0.4,
-        metallic: 0.8,
-        emission_color: vec3a(1.0, 0.1, 1.0),
-        emission_power: 0.0,
-    };
-
-    let shiny_orange = Material {
-        albedo: vec3a(1.0, 0.7, 0.0),
-        roughness: 0.7,
-        metallic: 0.7,
-        emission_color: vec3a(1.0, 0.7, 0.0),
-        emission_power: 10.0,
-    };
-
-    let sphere_a: Sphere = Sphere {
-        position: vec3a(0., -1., 0.),
-        radius: 0.5,
-
-        material_index: 2,
-    };
-
-    let sphere_b: Sphere = Sphere {
-        position: vec3a(-3., -2.0, 3.),
-        radius: 2.0,
-
-        material_index: 0,
-    };
-
-    let shiny_sphere: Sphere = Sphere {
-        position: vec3a(3., -15.0, -5.),
-        radius: 7.0,
-
-        material_index: 3,
-    };
-
-    // sphere to act as a floor
-    let floor: Sphere = Sphere {
-        position: vec3a(0., 500., 0.),
-        radius: 500.,
-
-        material_index: 1,
-    };
-
-    let scene: RenderScene = RenderScene {
-        spheres: vec![sphere_a, sphere_b, shiny_sphere, floor],
+    RenderScene {
         materials: vec![shiny_green, rough_blue, glossy_pink, shiny_orange],
+        spheres: vec![sphere_a, sphere_b, shiny_sphere, floor],
         sky_color: vec3a(0., 0.04, 0.1),
-    };
-
-    scene
+    }
 }
 
 async fn run(event_loop: EventLoop<()>, window: Window) {
@@ -214,7 +141,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let camera = Camera::new(size.width, size.height);
 
-    let scene = define_scene();
+    let scene = define_render_scene();
 
     let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
 
@@ -225,7 +152,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     // Create the logical device and command queue
     let (device, queue) = generate_device_and_queue(&adapter).await;
 
-    let (material_array, sphere_array) = define_render_scene();
     // Create uniform buffer
     let params = Params {
         width: size.width,
@@ -233,15 +159,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         _padding: [0; 8],
     };
 
-    let (mut scene_renderer, compute_bindgroup_layout, compute_bind_group) = Renderer::new(
-        camera,
-        scene,
-        &device,
-        &size,
-        &material_array,
-        &sphere_array,
-        &[params],
-    );
+    let (mut scene_renderer, compute_bindgroup_layout, compute_bind_group) =
+        Renderer::new(camera, scene, &device, &size, &[params]);
 
     // ################################ GPU DATA PIPELINE #########################################
 
@@ -832,7 +751,7 @@ fn create_ui(
                         ui.horizontal(|ui| {
                             if ui
                                 .add(
-                                    DragValue::new(&mut sphere_position.x)
+                                    DragValue::new(&mut sphere_position[0])
                                         .speed(0.1)
                                         .clamp_range(-100.0..=100.0)
                                         .prefix("X: "),
@@ -844,7 +763,7 @@ fn create_ui(
 
                             if ui
                                 .add(
-                                    DragValue::new(&mut sphere_position.y)
+                                    DragValue::new(&mut sphere_position[1])
                                         .speed(0.1)
                                         .clamp_range(-100.0..=0.0)
                                         .prefix("Y: "),
@@ -855,7 +774,7 @@ fn create_ui(
                             };
                             if ui
                                 .add(
-                                    DragValue::new(&mut sphere_position.z)
+                                    DragValue::new(&mut sphere_position[2])
                                         .speed(0.1)
                                         .clamp_range(-100.0..=100.0)
                                         .prefix("Z: "),
@@ -869,7 +788,7 @@ fn create_ui(
 
                     // sliders for radius, roughness and metallic
                     ui.vertical_centered_justified(|ui: &mut egui::Ui| {
-                        let material_index = current_sphere.material_index;
+                        let material_index = current_sphere.material_index as usize;
                         let current_material = &mut screne_renderer.scene.materials[material_index];
 
                         let sphere_color = &mut current_material.albedo;
@@ -880,7 +799,7 @@ fn create_ui(
 
                         ui.horizontal(|ui| {
                             if ui
-                                .color_edit_button_rgb(sphere_color.as_mut())
+                                .color_edit_button_rgb(sphere_color)
                                 .on_hover_text("color")
                                 .changed()
                             {
@@ -888,7 +807,7 @@ fn create_ui(
                             };
 
                             if ui
-                                .color_edit_button_rgb(sphere_emission_color.as_mut())
+                                .color_edit_button_rgb(sphere_emission_color)
                                 .on_hover_text("emission")
                                 .changed()
                             {
@@ -959,7 +878,7 @@ fn create_ui(
         });
 
     if interacted {
-        screne_renderer.reset_accumulation(device, queue)
+        screne_renderer.update_scene(device, queue)
     }
 
     egui_context.end_frame()

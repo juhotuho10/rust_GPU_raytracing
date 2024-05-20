@@ -1,4 +1,6 @@
-use wgpu::{util::DeviceExt, BindGroup, BindGroupLayout, Buffer};
+use wgpu::{
+    hal::empty::Encoder, util::DeviceExt, BindGroup, BindGroupLayout, Buffer, Device, Queue,
+};
 
 fn vec3_pad(x: f32, y: f32, z: f32) -> [f32; 4] {
     [x, y, z, 0.0]
@@ -277,5 +279,37 @@ impl DataBuffers {
         });
 
         (bind_group_layout, compute_bind_group)
+    }
+
+    pub fn update_ray_directions(&self, queue: &Queue, new_rays: &[Ray]) {
+        queue.write_buffer(&self.ray_buffer, 0, bytemuck::cast_slice(new_rays));
+    }
+
+    pub fn reset_accumulation(&mut self, device: &Device, queue: &Queue, params: &[Params]) {
+        let mut buffer_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Buffer Encoder"),
+        });
+
+        buffer_encoder.clear_buffer(&self.accumulation_buffer, 0, None);
+
+        queue.write_buffer(&self.params_buffer, 0, bytemuck::cast_slice(params));
+
+        queue.submit(Some(buffer_encoder.finish()));
+    }
+
+    pub fn update_accumulation(&self, queue: &Queue, params: &[Params]) {
+        queue.write_buffer(&self.params_buffer, 0, bytemuck::cast_slice(params));
+    }
+
+    pub fn update_spheres(&self, queue: &Queue, new_spheres: &[SceneSphere]) {
+        queue.write_buffer(&self.sphere_buffer, 0, bytemuck::cast_slice(new_spheres));
+    }
+
+    pub fn update_materials(&self, queue: &Queue, new_materials: &[SceneMaterial]) {
+        queue.write_buffer(
+            &self.material_buffer,
+            0,
+            bytemuck::cast_slice(new_materials),
+        );
     }
 }

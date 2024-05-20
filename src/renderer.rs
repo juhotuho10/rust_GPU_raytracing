@@ -1,7 +1,6 @@
 use crate::buffers::{Params, RayCamera, SceneMaterial, SceneSphere};
 
 use super::camera::Camera;
-use super::Scene::RenderScene;
 
 use super::buffers;
 
@@ -12,6 +11,13 @@ use glam::{vec3a, Vec3A};
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 
 use wgpu::{BindGroup, BindGroupLayout, Device, Queue, Texture};
+
+#[derive(Debug, Clone)]
+pub struct RenderScene {
+    pub spheres: Vec<SceneSphere>,
+    pub materials: Vec<SceneMaterial>,
+    pub sky_color: Vec3A,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct HitPayload {
@@ -31,7 +37,6 @@ pub struct Renderer {
     buffers: buffers::DataBuffers,
 
     // ###############
-    accumulated_image: Vec<Vec3A>,
     pub thread_pool: ThreadPool,
 }
 
@@ -41,8 +46,6 @@ impl Renderer {
         scene: RenderScene,
         device: &Device,
         size: &winit::dpi::PhysicalSize<u32>,
-        material_array: &[SceneMaterial],
-        sphere_array: &[SceneSphere],
         params: &[Params],
     ) -> (Renderer, BindGroupLayout, BindGroup) {
         let available_threads = rayon::current_num_threads();
@@ -59,8 +62,8 @@ impl Renderer {
             device,
             size,
             &camera_rays,
-            material_array,
-            sphere_array,
+            &scene.materials,
+            &scene.spheres,
             params,
         );
 
@@ -70,7 +73,7 @@ impl Renderer {
 
             accumulate: true,
             light_mode: 0,
-            accumulated_image: vec![],
+
             accumulation_index: 1,
             thread_pool,
             buffers,
@@ -80,40 +83,7 @@ impl Renderer {
     }
 
     pub fn _generate_pixels(&mut self, device: &Device, queue: &Queue) -> Vec<u8> {
-        let ray_directions = &self.camera.recalculate_ray_directions();
-
-        let mut pixel_rgba: Vec<u8> = Vec::with_capacity(ray_directions.len() * 4);
-
-        let n_bounces = 4;
-
-        let new_colors: Vec<Vec3A> = (0..ray_directions.len())
-            .into_par_iter()
-            .map(|index| self._per_pixel(index, n_bounces))
-            .collect();
-
-        for (index, color) in new_colors.iter().enumerate() {
-            self.accumulated_image[index] += *color;
-        }
-
-        self.thread_pool.install(|| {
-            pixel_rgba = (0..ray_directions.len())
-                .into_par_iter()
-                .flat_map_iter(|index: usize| {
-                    let normalized_color =
-                        self.accumulated_image[index] / self.accumulation_index as f32;
-
-                    self._to_rgba(normalized_color)
-                })
-                .collect();
-        });
-
-        if self.accumulate {
-            self.accumulation_index += 1;
-        } else {
-            self.reset_accumulation(device, queue);
-        }
-
-        pixel_rgba
+        vec![]
     }
 
     // single threadded version of the rendering for testing
@@ -303,19 +273,11 @@ impl Renderer {
                 bytemuck::cast_slice(&[new_camera]),
             );
 
-            queue.write_buffer(&self.buffers.ray_buffer, 0, bytemuck::cast_slice(&new_rays));
+            self.buffers.update_ray_directions(queue, &new_rays);
         };
     }
 
     pub fn reset_accumulation(&mut self, device: &Device, queue: &Queue) {
-        let mut buffer_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Buffer Encoder"),
-        });
-
-        buffer_encoder.clear_buffer(&self.buffers.accumulation_buffer, 0, None);
-
-        queue.submit(Some(buffer_encoder.finish()));
-
         self.accumulation_index = 1;
 
         let params = Params {
@@ -324,11 +286,7 @@ impl Renderer {
             _padding: [0; 8],
         };
 
-        queue.write_buffer(
-            &self.buffers.params_buffer,
-            0,
-            bytemuck::cast_slice(&[params]),
-        );
+        self.buffers.reset_accumulation(device, queue, &[params]);
     }
 
     fn _pcg_hash(&self, seed: &mut u32) -> f32 {
@@ -356,6 +314,16 @@ impl Renderer {
         scaler / (u32::MAX as f32)
     }
 
+    pub fn update_scene(&mut self, device: &Device, queue: &Queue) {
+        self.reset_accumulation(device, queue);
+
+        let new_spheres = &self.scene.spheres;
+        self.buffers.update_spheres(queue, new_spheres);
+
+        let new_materials = &self.scene.materials;
+        self.buffers.update_materials(queue, new_materials);
+    }
+
     pub fn update_frame(
         &mut self,
         device: &Device,
@@ -375,11 +343,7 @@ impl Renderer {
                 _padding: [0; 8],
             };
 
-            queue.write_buffer(
-                &self.buffers.params_buffer,
-                0,
-                bytemuck::cast_slice(&[params]),
-            );
+            self.buffers.update_accumulation(queue, &[params]);
 
             self.accumulation_index += 1;
         }
