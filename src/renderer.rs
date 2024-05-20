@@ -11,7 +11,8 @@ use glam::{vec3a, Vec3A};
 
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 
-use wgpu::{BindGroup, BindGroupLayout, Queue, Texture};
+use wgpu::core::device;
+use wgpu::{BindGroup, BindGroupLayout, Device, Queue, Texture};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct HitPayload {
@@ -43,7 +44,6 @@ fn generate_new_camera_rays(camera: &Camera) -> Vec<buffers::Ray> {
 pub struct Renderer {
     pub camera: Camera,
     pub scene: RenderScene,
-
     pub accumulate: bool,
     pub light_mode: u32,
     accumulation_index: u32,
@@ -58,9 +58,8 @@ impl Renderer {
     pub fn new(
         camera: Camera,
         scene: RenderScene,
-        device: &wgpu::Device,
+        device: &Device,
         size: &winit::dpi::PhysicalSize<u32>,
-
         material_array: &[SceneMaterial],
         sphere_array: &[SceneSphere],
         params: &[Params],
@@ -76,7 +75,7 @@ impl Renderer {
         let camera_rays = generate_new_camera_rays(&camera);
 
         let (buffers, bind_group_layout, compute_bind_group) = buffers::DataBuffers::new(
-            device,
+            &device,
             size,
             &camera_rays,
             material_array,
@@ -96,12 +95,12 @@ impl Renderer {
             buffers,
         };
 
-        renderer.reset_accumulation();
+        //renderer.reset_accumulation();
 
         (renderer, bind_group_layout, compute_bind_group)
     }
 
-    pub fn _generate_pixels(&mut self) -> Vec<u8> {
+    pub fn _generate_pixels(&mut self, device: &Device, queue: &Queue) -> Vec<u8> {
         let ray_directions = &self.camera.ray_directions;
 
         let mut pixel_rgba: Vec<u8> = Vec::with_capacity(ray_directions.len() * 4);
@@ -132,7 +131,7 @@ impl Renderer {
         if self.accumulate {
             self.accumulation_index += 1;
         } else {
-            self.reset_accumulation();
+            self.reset_accumulation(device, queue);
         }
 
         pixel_rgba
@@ -298,22 +297,39 @@ impl Renderer {
         [vector.x as u8, vector.y as u8, vector.z as u8, 255]
     }
 
-    pub fn on_resize(&mut self, width: u32, height: u32) {
-        self.camera.on_resize(width, height);
+    pub fn on_resize(
+        &mut self,
+        size: &winit::dpi::PhysicalSize<u32>,
+        device: &Device,
+        queue: &Queue,
+    ) {
+        self.camera.on_resize(size.width, size.height);
 
-        self.reset_accumulation()
+        self.reset_accumulation(device, queue)
     }
 
-    pub fn on_update(&mut self, mouse_delta: egui::Vec2, timestep: &f32, egui_context: &Context) {
+    pub fn on_update(
+        &mut self,
+        device: &Device,
+        queue: &Queue,
+        mouse_delta: egui::Vec2,
+        timestep: &f32,
+        egui_context: &Context,
+    ) {
         let moved = self.camera.on_update(mouse_delta, timestep, egui_context);
         if moved {
-            self.reset_accumulation()
+            self.reset_accumulation(device, queue)
         };
     }
 
-    pub fn reset_accumulation(&mut self) {
-        let total_size = (self.camera.viewport_height * self.camera.viewport_width) as usize;
-        self.accumulated_image = vec![Vec3A::splat(0.0); total_size];
+    pub fn reset_accumulation(&mut self, device: &Device, queue: &Queue) {
+        let mut buffer_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Buffer Encoder"),
+        });
+
+        buffer_encoder.clear_buffer(&self.buffers.accumulation_buffer, 0, None);
+
+        queue.submit(Some(buffer_encoder.finish()));
 
         self.accumulation_index = 1;
     }
@@ -345,7 +361,7 @@ impl Renderer {
 
     pub fn update_frame(
         &mut self,
-        device: &wgpu::Device,
+        device: &Device,
         queue: &Queue,
         compute_pipeline: &wgpu::ComputePipeline,
         compute_bind_group: &BindGroup,

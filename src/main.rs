@@ -12,6 +12,7 @@ use egui::{pos2, Color32, DragValue, Frame, FullOutput};
 use renderer::Renderer;
 
 use wgpu::{
+    core::device::{self, queue},
     include_wgsl, Adapter, Backends, BindGroup, Device, Dx12Compiler, Gles3MinorVersion, Instance,
     InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface, TextureDescriptor,
     TextureDimension, TextureFormat, TextureUsages,
@@ -359,7 +360,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 (size.height as f32 / 2.).round(),
                             );
 
-                            scene_renderer.on_resize(size.width, size.height);
+                            scene_renderer.on_resize(&size, &device, &queue);
 
                             texture = create_texture(&device, size);
 
@@ -453,18 +454,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                             // ###################################### update data step ########################################
 
-                            /*let mut buffer_encoder =
-                                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                                    label: Some("Buffer Encoder"),
-                                });
+                            //params.accumulation_index = 1;
 
-                            buffer_encoder.clear_buffer(&accumulation_buffer, 0, None);
-
-                            params.accumulation_index = 1;
-
-                            queue.write_buffer(&params_buffer, 0, bytemuck::cast_slice(&[params]));
-
-                            queue.submit(Some(buffer_encoder.finish()));*/
+                            //queue.write_buffer(&params_buffer, 0, bytemuck::cast_slice(&[params]));
 
                             // #############################################################################################
 
@@ -501,7 +493,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                             setup_renderpass(&mut encoder, &view, &render_pipeline, &bind_group);
 
-                            let full_output = create_ui(&mut platform, &mut scene_renderer);
+                            let full_output =
+                                create_ui(&device, &queue, &mut platform, &mut scene_renderer);
 
                             let paint_jobs = platform
                                 .context()
@@ -555,7 +548,13 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                                 let delta = current_mouse_pos - mouse_resting_position;
 
-                                scene_renderer.on_update(delta, &elapsed, &platform.context());
+                                scene_renderer.on_update(
+                                    &device,
+                                    &queue,
+                                    delta,
+                                    &elapsed,
+                                    &platform.context(),
+                                );
                             }
 
                             if platform
@@ -761,7 +760,12 @@ fn generate_instance() -> Instance {
 
 // ######################### compute ########################################
 
-fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOutput {
+fn create_ui(
+    device: &wgpu::Device,
+    queue: &Queue,
+    platform: &mut Platform,
+    screne_renderer: &mut Renderer,
+) -> FullOutput {
     platform.begin_frame();
 
     // important, create a egui context, do not use platform.conmtext()
@@ -955,7 +959,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
         });
 
     if interacted {
-        screne_renderer.reset_accumulation()
+        screne_renderer.reset_accumulation(&device, &queue)
     }
 
     egui_context.end_frame()
