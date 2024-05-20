@@ -42,7 +42,7 @@ impl Camera {
 
             near_clip: 0.1,
             far_clip: 100.0,
-            vertical_fov: 45.0,
+            vertical_fov: 60.0,
 
             movement_speed: 0.05,
             turning_speed: 0.002,
@@ -53,8 +53,8 @@ impl Camera {
             inverse_view: Mat4::from_cols_slice(&[1.0; 16]),
         };
 
-        camera.on_resize(width, height);
         camera.recalculate_view();
+        camera.recalculate_projection();
         camera.recalculate_ray_directions();
 
         camera
@@ -160,13 +160,13 @@ impl Camera {
         );
 
         // converting normalized -1 to 1 directions into worldspace directions
-        for y in 0..self.viewport_height {
+        /*for y in 0..self.viewport_height {
             let y_coord = y as f32 / self.viewport_height as f32;
             for x in 0..self.viewport_width {
                 let x_coord = x as f32 / self.viewport_width as f32;
 
                 // normalized between -1 and 1
-                let normalized_coord = vec2(x_coord, y_coord) * 2.0 - Vec2::ONE;
+                let normalized_coord = vec2(x_coord, y_coord) * 2.0 - 1.0;
 
                 let target: Vec4 = self.inverse_projection
                     * vec4(normalized_coord.x, normalized_coord.y, 1.0, 1.0);
@@ -187,18 +187,19 @@ impl Camera {
 
                 self.ray_directions[(x + y * self.viewport_width) as usize] = new_ray;
             }
-        }
+        }*/
 
         // multithreadded implementation
+        let min_width = self.viewport_height.min(self.viewport_width) as f32;
 
         // Create new ray directions in parallel
-        /*let new_ray_directions: Vec<Ray> = (0..self.viewport_height)
+        let new_ray_directions: Vec<Ray> = (0..self.viewport_height)
             .into_par_iter()
             .flat_map(|y| {
-                let y_coord = y as f32 / self.viewport_height as f32;
+                let y_coord: f32 = y as f32 / min_width;
                 (0..self.viewport_width)
                     .map(|x| {
-                        let x_coord = x as f32 / self.viewport_width as f32;
+                        let x_coord = x as f32 / min_width * 0.97;
 
                         // normalized between -1 and 1
                         let normalized_coord = vec2(x_coord, y_coord) * 2.0 - Vec2::ONE;
@@ -224,7 +225,7 @@ impl Camera {
             })
             .collect();
 
-        self.ray_directions = new_ray_directions;*/
+        self.ray_directions = new_ray_directions;
     }
 
     pub fn on_resize(&mut self, width: u32, height: u32) {

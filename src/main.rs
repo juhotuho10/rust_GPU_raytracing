@@ -273,7 +273,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     // ################################ GPU DATA PIPELINE #########################################
 
-    let mut camera_rays: Vec<Ray> = generate_camera_rays(&size);
+    let mut camera_rays: Vec<Ray> = generate_new_camera_rays(&camera);
+
     let (material_array, sphere_array) = define_render_scene();
     // Create uniform buffer
     let mut params = Params {
@@ -284,6 +285,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let (
         mut output_buffer_size,
+        mut accumulation_buffer_size,
         mut input_buffer,
         mut output_buffer,
         mut params_buffer,
@@ -437,9 +439,11 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 create_device_bindgroup(&device, &texture, &sampler);
 
                             // ###################### COMPUTE RESIZING ##################################
-                            camera_rays = generate_camera_rays(&size);
+                            camera_rays = generate_new_camera_rays(&camera);
+
                             (
                                 output_buffer_size,
+                                accumulation_buffer_size,
                                 input_buffer,
                                 output_buffer,
                                 params_buffer,
@@ -555,18 +559,22 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                             // ###################################### update data step ########################################
 
-                            let mut buffer_encoder =
-                                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                                    label: Some("Buffer Encoder"),
-                                });
-
                             params.accumulation_index += 1;
 
                             queue.write_buffer(&params_buffer, 0, bytemuck::cast_slice(&[params]));
 
-                            //buffer_encoder.clear_buffer(, offset, size)
+                            /*let mut buffer_encoder =
+                                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                    label: Some("Buffer Encoder"),
+                                });
 
-                            queue.submit(Some(buffer_encoder.finish()));
+                            buffer_encoder.clear_buffer(&accumulation_buffer, 0, None);
+
+                            params.accumulation_index = 1;
+
+                            queue.write_buffer(&params_buffer, 0, bytemuck::cast_slice(&[params]));
+
+                            queue.submit(Some(buffer_encoder.finish()));*/
 
                             // #############################################################################################
                             // ###################################### compute step ########################################
@@ -1039,6 +1047,7 @@ fn create_buffers(
     params: &[Params],
 ) -> (
     u64,
+    u64,
     Buffer,
     Buffer,
     Buffer,
@@ -1081,7 +1090,7 @@ fn create_buffers(
 
     // Create uniform buffer
     let camera = RayCamera {
-        origin: vec3_pad(0., -7.0, 25.),
+        origin: vec3_pad(-7.0, -7.0, 25.),
         direction: vec3_pad(0.0, 0.0, -1.0),
     };
 
@@ -1116,6 +1125,7 @@ fn create_buffers(
 
     (
         output_buffer_size,
+        accumulation_buffer_size,
         input_buffer,
         output_buffer,
         params_buffer,
