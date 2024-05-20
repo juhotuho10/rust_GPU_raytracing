@@ -1,4 +1,5 @@
 const F32_MAX: f32 = 3.4028235e+38;
+const U32_MAX: u32 = 4294967295u;
 
 struct Params {
     width: u32,
@@ -73,6 +74,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let bounces: u32 = 10u;
 
+
+    
     let f32_color: vec3<f32> = per_pixel(index, bounces);
 
     output_data[index] = pack_to_u32(f32_color);
@@ -96,11 +99,20 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
 
 
-    //if params.accumulation_index > 1000u {
-    //    output_data[index] = pack_to_u32(vec3<f32>(0.0, 1.0, 0.0)); // green
-    //} else {
-    //    output_data[index] = pack_to_u32(vec3<f32>(1.0, 0.0, 0.0)); // red
-    //};
+    /*var seed: u32 = index * params.accumulation_index * 326624u;
+    var result: PcgResult = random_scaler(seed);
+    seed = result.new_seed;
+
+    result = random_scaler(seed);
+
+    let scaler = result.scaler;
+
+
+    if (scaler.x > -1.0 && scaler.x < 1.0) && (scaler.y > -1.0 && scaler.y < 1.0) && (scaler.z > -1.0 && scaler.z < 1.0) {
+        output_data[index] = pack_to_u32(vec3<f32>(0.0, 1.0, 0.0)); // green
+    } else {
+        output_data[index] = pack_to_u32(vec3<f32>(1.0, 0.0, 0.0)); // red
+    };*/
 
 }
 
@@ -229,14 +241,13 @@ fn pcg_hash(seed: u32) -> u32 {
 fn random_scaler(seed: u32) -> PcgResult{
     var scaler = vec3<f32>(0., 0., 0.);
     var new_seed = pcg_hash(seed);
-    scaler.x = f32(new_seed);
+    scaler.x = f32(new_seed) / f32(U32_MAX);
     new_seed = pcg_hash(new_seed);
-    scaler.y = f32(new_seed);
+    scaler.y = f32(new_seed) / f32(U32_MAX);
     new_seed = pcg_hash(new_seed);
-    scaler.z = f32(new_seed);
+    scaler.z = f32(new_seed) / f32(U32_MAX);
 
     scaler = scaler * 2.0 - 1.0;
-
     return PcgResult(new_seed, scaler);
 }
 

@@ -108,7 +108,7 @@ fn define_render_scene() -> ([SceneMaterial; 4], [SceneSphere; 4]) {
         roughness: 0.3,
         emission_color: [0.3, 0.2, 0.8],
         metallic: 0.8,
-        emission_power: 0.1,
+        emission_power: 0.0,
         _padding: [0; 12],
     };
 
@@ -126,7 +126,7 @@ fn define_render_scene() -> ([SceneMaterial; 4], [SceneSphere; 4]) {
         roughness: 0.7,
         emission_color: [1.0, 0.7, 0.0],
         metallic: 0.7,
-        emission_power: 10.0,
+        emission_power: 100.0,
         _padding: [0; 12],
     };
 
