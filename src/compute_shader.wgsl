@@ -67,6 +67,7 @@ struct PcgResult {
 @group(0) @binding(3) var<uniform> ray_camera: RayCamera;
 @group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, 4>;
 @group(0) @binding(5) var<uniform> sphere_array: array<SceneSphere, 4>;
+@group(0) @binding(6) var<storage, read_write> accumulation_data: array<vec3<f32>>;
 
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -75,10 +76,18 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let bounces: u32 = 10u;
 
 
-    
     let f32_color: vec3<f32> = per_pixel(index, bounces);
 
-    output_data[index] = pack_to_u32(f32_color);
+    accumulation_data[index] += f32_color;
+
+    
+    var accumulated_color = accumulation_data[index] / f32(params.accumulation_index);
+
+    // clamp values between 0 and 1
+    accumulated_color = clamp(accumulated_color, vec3<f32>(0.0), vec3<f32>(1.0));
+
+    // pack 4 f32 values into a single u32 (4x u8 rgba color)
+    output_data[index] = pack_to_u32(accumulated_color);
     
 
     /*let ray_origin = ray_camera.origin;
@@ -99,22 +108,16 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
 
 
-    /*var seed: u32 = index * params.accumulation_index * 326624u;
-    var result: PcgResult = random_scaler(seed);
-    seed = result.new_seed;
+    /*let f32_color: vec3<f32> = per_pixel(index, bounces);
 
-    result = random_scaler(seed);
-
-    let scaler = result.scaler;
-
-
-    if (scaler.x > -1.0 && scaler.x < 1.0) && (scaler.y > -1.0 && scaler.y < 1.0) && (scaler.z > -1.0 && scaler.z < 1.0) {
+    if (f32_color.x > 1.0 || f32_color.y > 1.0 || f32_color.z > 1.0 ) {
         output_data[index] = pack_to_u32(vec3<f32>(0.0, 1.0, 0.0)); // green
     } else {
         output_data[index] = pack_to_u32(vec3<f32>(1.0, 0.0, 0.0)); // red
     };*/
 
 }
+
 
 fn pack_to_u32(vector: vec3<f32>) -> u32 {
   // scale the f32 values from [0.0, 1.0] to [0.0, 255.0]
@@ -139,9 +142,9 @@ fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
     );
 
     
-    var light_contribution = vec3<f32>(1.0, 1.0, 1.0);
-    var light = vec3<f32>(0.0, 0.0, 0.0);
-    let sky_color = vec3<f32>(0.0, 0.04, 0.1) * 5;
+    var light_contribution = vec3<f32>(1.0);
+    var light = vec3<f32>(0.0);
+    let sky_color = vec3<f32>(0.0, 0.04, 0.1);
 
     var seed: u32 = index * params.accumulation_index * 326624u;
 
@@ -173,6 +176,7 @@ fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
 
     }
 
+    
     return light;
 
 }
@@ -239,11 +243,13 @@ fn pcg_hash(seed: u32) -> u32 {
 }
 
 fn random_scaler(seed: u32) -> PcgResult{
-    var scaler = vec3<f32>(0., 0., 0.);
+    var scaler = vec3<f32>(0.0);
     var new_seed = pcg_hash(seed);
     scaler.x = f32(new_seed) / f32(U32_MAX);
+
     new_seed = pcg_hash(new_seed);
     scaler.y = f32(new_seed) / f32(U32_MAX);
+
     new_seed = pcg_hash(new_seed);
     scaler.z = f32(new_seed) / f32(U32_MAX);
 
@@ -253,8 +259,8 @@ fn random_scaler(seed: u32) -> PcgResult{
 
 fn miss(ray: Ray) -> HitPayload{
     return HitPayload(-1.0, 
-    vec3<f32>(0.0, 0.0, 0.0),
-    vec3<f32>(0.0, 0.0, 0.0),
+    vec3<f32>(0.0),
+    vec3<f32>(0.0),
     0u
     );
 }

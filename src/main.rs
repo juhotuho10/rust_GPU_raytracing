@@ -99,15 +99,15 @@ fn define_render_scene() -> ([SceneMaterial; 4], [SceneSphere; 4]) {
         roughness: 0.3,
         emission_color: [0.1, 0.8, 0.4],
         metallic: 1.0,
-        emission_power: 0.2,
+        emission_power: 0.0,
         _padding: [0; 12],
     };
 
     let rough_blue = SceneMaterial {
         albedo: [0.3, 0.2, 0.8],
-        roughness: 0.3,
+        roughness: 0.7,
         emission_color: [0.3, 0.2, 0.8],
-        metallic: 0.8,
+        metallic: 0.5,
         emission_power: 0.0,
         _padding: [0; 12],
     };
@@ -117,7 +117,7 @@ fn define_render_scene() -> ([SceneMaterial; 4], [SceneSphere; 4]) {
         roughness: 0.4,
         emission_color: [1.0, 0.1, 1.0],
         metallic: 0.8,
-        emission_power: 0.4,
+        emission_power: 0.0,
         _padding: [0; 12],
     };
 
@@ -126,7 +126,7 @@ fn define_render_scene() -> ([SceneMaterial; 4], [SceneSphere; 4]) {
         roughness: 0.7,
         emission_color: [1.0, 0.7, 0.0],
         metallic: 0.7,
-        emission_power: 100.0,
+        emission_power: 10.0,
         _padding: [0; 12],
     };
 
@@ -291,6 +291,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         mut camera_buffer,
         mut material_buffer,
         mut sphere_buffer,
+        mut accumulation_buffer,
     ) = create_buffers(
         &device,
         &size,
@@ -310,6 +311,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         &camera_buffer,
         &material_buffer,
         &sphere_buffer,
+        &accumulation_buffer,
     );
 
     // #####################################################################################
@@ -445,6 +447,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 camera_buffer,
                                 material_buffer,
                                 sphere_buffer,
+                                accumulation_buffer,
                             ) = create_buffers(
                                 &device,
                                 &size,
@@ -465,6 +468,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     &camera_buffer,
                                     &material_buffer,
                                     &sphere_buffer,
+                                    &accumulation_buffer,
                                 );
                             // ####################################################
 
@@ -551,9 +555,18 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                             // ###################################### update data step ########################################
 
+                            let mut buffer_encoder =
+                                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                    label: Some("Buffer Encoder"),
+                                });
+
                             params.accumulation_index += 1;
 
                             queue.write_buffer(&params_buffer, 0, bytemuck::cast_slice(&[params]));
+
+                            //buffer_encoder.clear_buffer(, offset, size)
+
+                            queue.submit(Some(buffer_encoder.finish()));
 
                             // #############################################################################################
                             // ###################################### compute step ########################################
@@ -1024,7 +1037,17 @@ fn create_buffers(
     material_array: &[SceneMaterial],
     sphere_array: &[SceneSphere],
     params: &[Params],
-) -> (u64, Buffer, Buffer, Buffer, Buffer, Buffer, Buffer, Buffer) {
+) -> (
+    u64,
+    Buffer,
+    Buffer,
+    Buffer,
+    Buffer,
+    Buffer,
+    Buffer,
+    Buffer,
+    Buffer,
+) {
     let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Input Buffer"),
         contents: bytemuck::cast_slice(camera_rays),
@@ -1080,6 +1103,17 @@ fn create_buffers(
         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     });
 
+    // 3 bytes of f32 per pixel
+    let accumulation_buffer_size =
+        (size.width * size.height * std::mem::size_of::<[f32; 4]>() as u32) as wgpu::BufferAddress;
+
+    let accumulation_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Accumulation Buffer"),
+        size: accumulation_buffer_size,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+
     (
         output_buffer_size,
         input_buffer,
@@ -1089,6 +1123,7 @@ fn create_buffers(
         camera_buffer,
         material_buffer,
         sphere_buffer,
+        accumulation_buffer,
     )
 }
 
@@ -1100,6 +1135,7 @@ fn create_compute_bindgroup(
     camera_buffer: &Buffer,
     material_buffer: &Buffer,
     sphere_buffer: &Buffer,
+    accumulation_buffer: &Buffer,
 ) -> (wgpu::BindGroupLayout, BindGroup) {
     let params_bind = 0;
     let ray_directions_bind = 1;
@@ -1107,6 +1143,7 @@ fn create_compute_bindgroup(
     let camera_bind = 3;
     let material_bind = 4;
     let sphere_bind = 5;
+    let accumulation_bind = 6;
 
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         entries: &[
@@ -1170,6 +1207,16 @@ fn create_compute_bindgroup(
                 },
                 count: None,
             },
+            wgpu::BindGroupLayoutEntry {
+                binding: accumulation_bind,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
         ],
         label: None,
     });
@@ -1200,6 +1247,10 @@ fn create_compute_bindgroup(
             wgpu::BindGroupEntry {
                 binding: sphere_bind,
                 resource: sphere_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: accumulation_bind,
+                resource: accumulation_buffer.as_entire_binding(),
             },
         ],
         label: None,
