@@ -1,11 +1,17 @@
+use crate::buffers::{Params, SceneMaterial, SceneSphere};
+
 use super::camera::{Camera, Ray};
 use super::Scene::RenderScene;
+
+use super::buffers;
 
 use egui::Context;
 
 use glam::{vec3a, Vec3A};
 
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
+
+use wgpu::{BindGroup, BindGroupLayout, Queue, Texture};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct HitPayload {
@@ -16,18 +22,49 @@ struct HitPayload {
     object_index: usize,
 }
 
+fn generate_new_camera_rays(camera: &Camera) -> Vec<buffers::Ray> {
+    let mut ray_vec: Vec<buffers::Ray> = vec![];
+
+    let rays = camera.ray_directions.clone();
+
+    for ray in rays {
+        let direction = ray.direction;
+        let new_ray = buffers::Ray {
+            direction: [direction.x, direction.y, direction.z],
+            _padding: [0; 4],
+        };
+
+        ray_vec.push(new_ray)
+    }
+
+    ray_vec
+}
+
 pub struct Renderer {
     pub camera: Camera,
     pub scene: RenderScene,
+
     pub accumulate: bool,
     pub light_mode: u32,
+    accumulation_index: u32,
+    buffers: buffers::DataBuffers,
+
+    // ###############
     accumulated_image: Vec<Vec3A>,
-    accumulation_index: f32,
     pub thread_pool: ThreadPool,
 }
 
 impl Renderer {
-    pub fn new(camera: Camera, scene: RenderScene) -> Renderer {
+    pub fn new(
+        camera: Camera,
+        scene: RenderScene,
+        device: &wgpu::Device,
+        size: &winit::dpi::PhysicalSize<u32>,
+
+        material_array: &[SceneMaterial],
+        sphere_array: &[SceneSphere],
+        params: &[Params],
+    ) -> (Renderer, BindGroupLayout, BindGroup) {
         let available_threads = rayon::current_num_threads();
         let used_threads = available_threads / 2;
 
@@ -36,22 +73,35 @@ impl Renderer {
             .build()
             .expect("couldn't construct threadpool");
 
+        let camera_rays = generate_new_camera_rays(&camera);
+
+        let (buffers, bind_group_layout, compute_bind_group) = buffers::DataBuffers::new(
+            device,
+            size,
+            &camera_rays,
+            material_array,
+            sphere_array,
+            params,
+        );
+
         let mut renderer = Renderer {
             camera,
             scene,
+
             accumulate: true,
             light_mode: 0,
             accumulated_image: vec![],
-            accumulation_index: 1.0,
+            accumulation_index: 1,
             thread_pool,
+            buffers,
         };
 
         renderer.reset_accumulation();
 
-        renderer
+        (renderer, bind_group_layout, compute_bind_group)
     }
 
-    pub fn generate_pixels(&mut self) -> Vec<u8> {
+    pub fn _generate_pixels(&mut self) -> Vec<u8> {
         let ray_directions = &self.camera.ray_directions;
 
         let mut pixel_rgba: Vec<u8> = Vec::with_capacity(ray_directions.len() * 4);
@@ -60,7 +110,7 @@ impl Renderer {
 
         let new_colors: Vec<Vec3A> = (0..ray_directions.len())
             .into_par_iter()
-            .map(|index| self.per_pixel(index, n_bounces))
+            .map(|index| self._per_pixel(index, n_bounces))
             .collect();
 
         for (index, color) in new_colors.iter().enumerate() {
@@ -71,15 +121,16 @@ impl Renderer {
             pixel_rgba = (0..ray_directions.len())
                 .into_par_iter()
                 .flat_map_iter(|index: usize| {
-                    let normalized_color = self.accumulated_image[index] / self.accumulation_index;
+                    let normalized_color =
+                        self.accumulated_image[index] / self.accumulation_index as f32;
 
-                    self.to_rgba(normalized_color)
+                    self._to_rgba(normalized_color)
                 })
                 .collect();
         });
 
         if self.accumulate {
-            self.accumulation_index += 1.0;
+            self.accumulation_index += 1;
         } else {
             self.reset_accumulation();
         }
@@ -103,7 +154,7 @@ impl Renderer {
         pixel_colors
     }*/
 
-    fn trace_ray(&self, ray: &Ray) -> HitPayload {
+    fn _trace_ray(&self, ray: &Ray) -> HitPayload {
         // (bx^2 + by^2)t^2 + 2*(axbx + ayby)t + (ax^2 + by^2 - r^2) = 0
         // where
         // a = ray origin
@@ -145,12 +196,12 @@ impl Renderer {
         }
 
         match closest_sphere_index {
-            None => self.miss(ray),
-            Some(sphere_index) => self.closest_hit(ray, hit_distance, sphere_index),
+            None => self._miss(ray),
+            Some(sphere_index) => self._closest_hit(ray, hit_distance, sphere_index),
         }
     }
 
-    fn closest_hit(&self, ray: &Ray, hit_distance: f32, object_index: usize) -> HitPayload {
+    fn _closest_hit(&self, ray: &Ray, hit_distance: f32, object_index: usize) -> HitPayload {
         let closest_sphere = &self.scene.spheres[object_index];
 
         //let origin = ray.origin - closest_sphere.position;
@@ -165,7 +216,7 @@ impl Renderer {
         }
     }
 
-    fn miss(&self, _ray: &Ray) -> HitPayload {
+    fn _miss(&self, _ray: &Ray) -> HitPayload {
         HitPayload {
             hit_distance: -1.0,
             world_position: Vec3A::splat(0.),
@@ -174,15 +225,15 @@ impl Renderer {
         }
     }
 
-    fn per_pixel(&self, index: usize, bounces: u8) -> Vec3A {
+    fn _per_pixel(&self, index: usize, bounces: u8) -> Vec3A {
         let mut ray = self.camera.ray_directions[index];
         let mut light_contribution = Vec3A::splat(1.0);
         let mut light = Vec3A::splat(0.0);
 
-        let mut seed = (index as u32) * (self.accumulation_index as u32 * 326624);
+        let mut seed = (index as u32) * (self.accumulation_index * 326624);
 
         for _ in 0..bounces {
-            let hit_payload = &self.trace_ray(&ray);
+            let hit_payload = &self._trace_ray(&ray);
 
             if hit_payload.hit_distance < 0. {
                 // missed sphere, we het ambient color
@@ -196,7 +247,7 @@ impl Renderer {
             let material_index = closest_sphere.material_index;
             let current_material = &self.scene.materials[material_index];
 
-            light += current_material.get_emission() * light_contribution;
+            light += current_material._get_emission() * light_contribution;
 
             light_contribution *= current_material.albedo * current_material.metallic;
 
@@ -207,27 +258,27 @@ impl Renderer {
             match self.light_mode {
                 0 => {
                     ray.direction = self
-                        .reflect_ray(
+                        ._reflect_ray(
                             ray.direction,
                             hit_payload.world_normal
-                                + current_material.roughness * self.random_scaler(&mut seed),
+                                + current_material.roughness * self._random_scaler(&mut seed),
                         )
                         .normalize();
                 }
                 1 => {
-                    ray.direction = (self.reflect_ray(ray.direction, hit_payload.world_normal)
-                        + current_material.roughness * self.random_scaler(&mut seed))
+                    ray.direction = (self._reflect_ray(ray.direction, hit_payload.world_normal)
+                        + current_material.roughness * self._random_scaler(&mut seed))
                     .normalize();
                 }
                 2 => {
-                    ray.direction = (self.reflect_ray(ray.direction, hit_payload.world_normal)
-                        + ((hit_payload.world_normal + self.random_scaler(&mut seed))
+                    ray.direction = (self._reflect_ray(ray.direction, hit_payload.world_normal)
+                        + ((hit_payload.world_normal + self._random_scaler(&mut seed))
                             * current_material.roughness))
                         .normalize()
                 }
                 3 => {
                     ray.direction =
-                        (hit_payload.world_normal + self.random_scaler(&mut seed)).normalize()
+                        (hit_payload.world_normal + self._random_scaler(&mut seed)).normalize()
                 }
                 _ => {
                     unimplemented!("light mode doesnt exist")
@@ -238,11 +289,11 @@ impl Renderer {
         light
     }
 
-    fn reflect_ray(&self, ray: Vec3A, normal: Vec3A) -> Vec3A {
+    fn _reflect_ray(&self, ray: Vec3A, normal: Vec3A) -> Vec3A {
         ray - (2.0 * ray.dot(normal) * normal)
     }
 
-    fn to_rgba(&self, mut vector: Vec3A) -> [u8; 4] {
+    fn _to_rgba(&self, mut vector: Vec3A) -> [u8; 4] {
         vector *= 255.0;
         [vector.x as u8, vector.y as u8, vector.z as u8, 255]
     }
@@ -264,10 +315,10 @@ impl Renderer {
         let total_size = (self.camera.viewport_height * self.camera.viewport_width) as usize;
         self.accumulated_image = vec![Vec3A::splat(0.0); total_size];
 
-        self.accumulation_index = 1.0;
+        self.accumulation_index = 1;
     }
 
-    fn pcg_hash(&self, seed: &mut u32) -> f32 {
+    fn _pcg_hash(&self, seed: &mut u32) -> f32 {
         let state = seed.wrapping_mul(747796405).wrapping_add(2891336453);
 
         let word =
@@ -278,17 +329,108 @@ impl Renderer {
         *seed as f32
     }
 
-    fn random_scaler(&self, seed: &mut u32) -> Vec3A {
-        self.positive_random_scaler(seed) * 2.0 - 1.0
+    fn _random_scaler(&self, seed: &mut u32) -> Vec3A {
+        self._positive_random_scaler(seed) * 2.0 - 1.0
     }
 
-    fn positive_random_scaler(&self, seed: &mut u32) -> Vec3A {
+    fn _positive_random_scaler(&self, seed: &mut u32) -> Vec3A {
         let scaler = vec3a(
-            self.pcg_hash(seed),
-            self.pcg_hash(seed),
-            self.pcg_hash(seed),
+            self._pcg_hash(seed),
+            self._pcg_hash(seed),
+            self._pcg_hash(seed),
         );
 
         scaler / (u32::MAX as f32)
+    }
+
+    pub fn update_frame(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &Queue,
+        compute_pipeline: &wgpu::ComputePipeline,
+        compute_bind_group: &BindGroup,
+        texture: &Texture,
+    ) {
+        // ###################################### update accumulation ########################################
+        let width = self.camera.viewport_width;
+        let height = self.camera.viewport_height;
+
+        if self.accumulate {
+            self.accumulation_index += 1;
+
+            let params = Params {
+                width,
+                accumulation_index: self.accumulation_index,
+                _padding: [0; 8],
+            };
+
+            queue.write_buffer(
+                &self.buffers.params_buffer,
+                0,
+                bytemuck::cast_slice(&[params]),
+            );
+        }
+        // ###################################### compute step ########################################
+
+        let mut compute_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Compute Encoder"),
+        });
+
+        {
+            let mut compute_pass =
+                compute_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some("Compute Pass"),
+                    timestamp_writes: None,
+                });
+            compute_pass.set_pipeline(compute_pipeline);
+            compute_pass.set_bind_group(0, compute_bind_group, &[]);
+            compute_pass.dispatch_workgroups((width + 7) / 8, (height + 7) / 8, 1);
+        }
+
+        queue.submit(Some(compute_encoder.finish()));
+
+        // ###################################### copying buffers to texture ########################################
+        let mut copy_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Copy Encoder"),
+        });
+
+        let bytes_per_row = self.calculate_bytes_per_row(width);
+
+        // Copy the output buffer to the texture
+        copy_encoder.copy_buffer_to_texture(
+            wgpu::ImageCopyBuffer {
+                buffer: &self.buffers.output_buffer,
+                layout: wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(bytes_per_row), // 4 bytes per pixel
+                    rows_per_image: Some(height),
+                },
+            },
+            wgpu::ImageCopyTexture {
+                texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        queue.submit(Some(copy_encoder.finish()));
+    }
+
+    pub fn calculate_bytes_per_row(&self, width: u32) -> u32 {
+        // the gpu buffer has to be 256 * n bytes per row
+
+        let bytes_per_pixel = 4; // RGBA8Unorm = 4 bytes per pixel
+
+        let value = width * bytes_per_pixel;
+        let alignment = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+
+        // bytes per row
+        (value + alignment - 1) & !(alignment - 1)
     }
 }

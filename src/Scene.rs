@@ -23,7 +23,7 @@ pub struct Material {
 }
 
 impl Material {
-    pub fn get_emission(&self) -> Vec3A {
+    pub fn _get_emission(&self) -> Vec3A {
         self.emission_color * self.emission_power
     }
 }
