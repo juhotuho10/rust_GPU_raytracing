@@ -38,8 +38,9 @@ fn vec3_pad(x: f32, y: f32, z: f32) -> [f32; 4] {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct Params {
-    width: u32,         // float, aligned to 4 bytes
-    _padding: [u8; 12], // padding to ensure 16-byte alignment
+    width: u32,              // float, aligned to 4 bytes
+    accumulation_index: u32, // u32, aligned to 4 bytes
+    _padding: [u8; 8],       // padding to ensure 16-byte alignment
 }
 
 #[repr(C)]
@@ -104,10 +105,10 @@ fn define_render_scene() -> ([SceneMaterial; 4], [SceneSphere; 4]) {
 
     let rough_blue = SceneMaterial {
         albedo: [0.3, 0.2, 0.8],
-        roughness: 0.7,
+        roughness: 0.3,
         emission_color: [0.3, 0.2, 0.8],
-        metallic: 0.5,
-        emission_power: 0.0,
+        metallic: 0.8,
+        emission_power: 0.1,
         _padding: [0; 12],
     };
 
@@ -130,7 +131,7 @@ fn define_render_scene() -> ([SceneMaterial; 4], [SceneSphere; 4]) {
     };
 
     let sphere_a: SceneSphere = SceneSphere {
-        position: [0., 0., 0.],
+        position: [0., -0.5, 0.],
         radius: 0.5,
 
         material_index: 2,
@@ -274,6 +275,12 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let mut camera_rays: Vec<Ray> = generate_camera_rays(&size);
     let (material_array, sphere_array) = define_render_scene();
+    // Create uniform buffer
+    let mut params = Params {
+        width: size.width,
+        accumulation_index: 1,
+        _padding: [0; 8],
+    };
 
     let (
         mut output_buffer_size,
@@ -284,7 +291,14 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         mut camera_buffer,
         mut material_buffer,
         mut sphere_buffer,
-    ) = create_buffers(&device, &size, &camera_rays, &material_array, &sphere_array);
+    ) = create_buffers(
+        &device,
+        &size,
+        &camera_rays,
+        &material_array,
+        &sphere_array,
+        &[params],
+    );
 
     let mut bytes_per_row = calculate_bytes_per_row(&size);
 
@@ -437,6 +451,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 &camera_rays,
                                 &material_array,
                                 &sphere_array,
+                                &[params],
                             );
 
                             bytes_per_row = calculate_bytes_per_row(&size);
@@ -536,11 +551,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                             // ###################################### update data step ########################################
 
-                            //queue.write_buffer(
-                            //    &input_buffer,
-                            //    0,
-                            //    bytemuck::cast_slice(&camera_rays),
-                            //);
+                            params.accumulation_index += 1;
+
+                            queue.write_buffer(&params_buffer, 0, bytemuck::cast_slice(&[params]));
 
                             // #############################################################################################
                             // ###################################### compute step ########################################
@@ -1010,6 +1023,7 @@ fn create_buffers(
     camera_rays: &[Ray],
     material_array: &[SceneMaterial],
     sphere_array: &[SceneSphere],
+    params: &[Params],
 ) -> (u64, Buffer, Buffer, Buffer, Buffer, Buffer, Buffer, Buffer) {
     let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Input Buffer"),
@@ -1028,16 +1042,10 @@ fn create_buffers(
         mapped_at_creation: false,
     });
 
-    // Create uniform buffer
-    let params = Params {
-        width: size.width,
-        _padding: [0; 12],
-    };
-
     let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Params Buffer"),
-        contents: bytemuck::cast_slice(&[params]),
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        contents: bytemuck::cast_slice(params),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
     });
 
     // Create staging buffer for reading back data
@@ -1106,7 +1114,7 @@ fn create_compute_bindgroup(
                 binding: params_bind,
                 visibility: wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
                     min_binding_size: None,
                 },

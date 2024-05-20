@@ -2,11 +2,10 @@ const F32_MAX: f32 = 3.4028235e+38;
 
 struct Params {
     width: u32,
-
+    accumulation_index: u32,
     // explicit padding to match 16 byte alignment
     _padding1: u32,
     _padding2: u32,
-    _padding3: u32,
 };
 
 
@@ -54,10 +53,14 @@ struct Ray {
     direction: vec3<f32>,
 }
 
+struct PcgResult {
+    new_seed: u32,
+    scaler: vec3<f32>,
+};
 
 
 
-@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(0) var<storage, read> params: Params;
 @group(0) @binding(1) var<storage, read> camera_rays: array<vec3<f32>>;
 @group(0) @binding(2) var<storage, read_write> output_data: array<u32>;
 @group(0) @binding(3) var<uniform> ray_camera: RayCamera;
@@ -68,7 +71,7 @@ struct Ray {
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let index: u32 =  (global_id.y * params.width) + global_id.x;
 
-    let bounces: u32 = 4u;
+    let bounces: u32 = 10u;
 
     let f32_color: vec3<f32> = per_pixel(index, bounces);
 
@@ -93,13 +96,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
 
 
-    //if ray_camera.origin.z == 25.0 {
+    //if params.accumulation_index > 1000u {
     //    output_data[index] = pack_to_u32(vec3<f32>(0.0, 1.0, 0.0)); // green
     //} else {
     //    output_data[index] = pack_to_u32(vec3<f32>(1.0, 0.0, 0.0)); // red
     //};
-
-
 
 }
 
@@ -128,18 +129,16 @@ fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
     
     var light_contribution = vec3<f32>(1.0, 1.0, 1.0);
     var light = vec3<f32>(0.0, 0.0, 0.0);
-    let accumulation_index: u32 = 1u;
-    //let skycolor = vec3<f32>(0., 0.04, 0.1);
-    let skycolor = vec3<f32>(0.0, 0.04, 0.1);
+    let sky_color = vec3<f32>(0.0, 0.04, 0.1) * 5;
 
-    var seed: u32 = index * accumulation_index * 326624u;
+    var seed: u32 = index * params.accumulation_index * 326624u;
 
     for (var i: u32 = 0u; i < bounces; i = i + 1) {
 
         let hit_payload: HitPayload = trace_ray(ray);
 
         if hit_payload.hit_distance < 0 {
-            light += skycolor * light_contribution;
+            light += sky_color * light_contribution;
             break;
         }
 
@@ -154,7 +153,11 @@ fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
 
         ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
 
-        ray.direction = normalize(hit_payload.world_normal + random_scaler(seed));
+        let result: PcgResult = random_scaler(seed);
+        seed = result.new_seed;
+        let scaler = result.scaler;
+
+        ray.direction = normalize(hit_payload.world_normal + scaler);
 
     }
 
@@ -214,8 +217,27 @@ fn trace_ray(ray: Ray) -> HitPayload{
     
 }
 
-fn random_scaler(seed: u32) -> vec3<f32>{
-    return vec3<f32>(-0.5, 0.9, 0.1);
+fn pcg_hash(seed: u32) -> u32 {
+    var state: u32 = seed * 747796405u + 2891336453u;
+
+    var word: u32 = (state >> ((state >> 28u) + 4u)) ^ state;
+    word = word * 277803737u;
+
+    return (word >> 22u) ^ word;
+}
+
+fn random_scaler(seed: u32) -> PcgResult{
+    var scaler = vec3<f32>(0., 0., 0.);
+    var new_seed = pcg_hash(seed);
+    scaler.x = f32(new_seed);
+    new_seed = pcg_hash(new_seed);
+    scaler.y = f32(new_seed);
+    new_seed = pcg_hash(new_seed);
+    scaler.z = f32(new_seed);
+
+    scaler = scaler * 2.0 - 1.0;
+
+    return PcgResult(new_seed, scaler);
 }
 
 fn miss(ray: Ray) -> HitPayload{
