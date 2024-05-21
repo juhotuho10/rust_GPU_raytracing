@@ -1,30 +1,30 @@
-mod Scene;
+mod buffers;
 mod camera;
 mod renderer;
 
+use buffers::{Params, SceneMaterial, SceneSphere};
 use camera::Camera;
-use Scene::{Material, RenderScene, Sphere};
 
 use egui::{pos2, Color32, DragValue, Frame, FullOutput};
 
-use renderer::Renderer;
-use std::{borrow::Cow, time};
+use renderer::{RenderScene, Renderer};
+
 use wgpu::{
-    Adapter, Backends, BindGroup, Device, Dx12Compiler, Gles3MinorVersion, Instance,
-    InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface, SurfaceConfiguration,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
+    include_wgsl, Adapter, Backends, BindGroup, Device, Dx12Compiler, Gles3MinorVersion, Instance,
+    InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface, TextureDescriptor,
+    TextureDimension, TextureFormat, TextureUsages,
 };
+
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, Event, KeyEvent, MouseButton, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    keyboard::{Key, KeyCode, PhysicalKey},
+    event_loop::EventLoop,
+    keyboard::{KeyCode, PhysicalKey},
     window::{CursorGrabMode, Window},
 };
 
 use egui_wgpu_backend::{RenderPass as EguiRenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
-use glam::{vec3a, Vec3A};
 
 use std::time::Instant;
 
@@ -33,86 +33,93 @@ pub fn main() {
 
     let builder = winit::window::WindowBuilder::new();
 
-    let window_size = PhysicalSize::new(1400, 700);
+    let window_size = PhysicalSize::new(1600, 900);
 
     let window = builder
         .with_inner_size(window_size)
         .build(&event_loop)
         .unwrap();
 
+    window.set_resizable(false);
     env_logger::init();
     pollster::block_on(run(event_loop, window));
 }
 
-fn define_scene() -> RenderScene {
-    let shiny_green = Material {
-        albedo: vec3a(0.1, 0.8, 0.4),
+fn define_render_scene() -> RenderScene {
+    let shiny_green = SceneMaterial {
+        albedo: [0.1, 0.8, 0.4],
         roughness: 0.3,
+        emission_color: [0.1, 0.8, 0.4],
         metallic: 1.0,
-        emission_color: vec3a(0.1, 0.8, 0.4),
         emission_power: 0.0,
+        _padding: [0; 12],
     };
 
-    let rough_blue = Material {
-        albedo: vec3a(0.3, 0.2, 0.8),
+    let rough_blue = SceneMaterial {
+        albedo: [0.3, 0.2, 0.8],
         roughness: 0.7,
+        emission_color: [0.3, 0.2, 0.8],
         metallic: 0.5,
-        emission_color: vec3a(0.3, 0.2, 0.8),
         emission_power: 0.0,
+        _padding: [0; 12],
     };
 
-    let glossy_pink = Material {
-        albedo: vec3a(1.0, 0.1, 1.0),
+    let glossy_pink = SceneMaterial {
+        albedo: [1.0, 0.1, 1.0],
         roughness: 0.4,
+        emission_color: [1.0, 0.1, 1.0],
         metallic: 0.8,
-        emission_color: vec3a(1.0, 0.1, 1.0),
         emission_power: 0.0,
+        _padding: [0; 12],
     };
 
-    let shiny_orange = Material {
-        albedo: vec3a(1.0, 0.7, 0.0),
+    let shiny_orange = SceneMaterial {
+        albedo: [1.0, 0.7, 0.0],
         roughness: 0.7,
+        emission_color: [1.0, 0.7, 0.0],
         metallic: 0.7,
-        emission_color: vec3a(1.0, 0.7, 0.0),
         emission_power: 10.0,
+        _padding: [0; 12],
     };
 
-    let sphere_a: Sphere = Sphere {
-        position: vec3a(0., -1., 0.),
+    let sphere_a: SceneSphere = SceneSphere {
+        position: [0., -0.5, 0.],
         radius: 0.5,
 
         material_index: 2,
+        _padding: [0; 12],
     };
 
-    let sphere_b: Sphere = Sphere {
-        position: vec3a(-3., -2.0, 3.),
+    let sphere_b: SceneSphere = SceneSphere {
+        position: [-3., -2.0, 3.],
         radius: 2.0,
 
         material_index: 0,
+        _padding: [0; 12],
     };
 
-    let shiny_sphere: Sphere = Sphere {
-        position: vec3a(3., -15.0, -5.),
+    let shiny_sphere: SceneSphere = SceneSphere {
+        position: [3., -15.0, -5.],
         radius: 7.0,
 
         material_index: 3,
+        _padding: [0; 12],
     };
 
     // sphere to act as a floor
-    let floor: Sphere = Sphere {
-        position: vec3a(0., 500., 0.),
+    let floor: SceneSphere = SceneSphere {
+        position: [0., 500., 0.],
         radius: 500.,
 
         material_index: 1,
+        _padding: [0; 12],
     };
 
-    let scene: RenderScene = RenderScene {
-        spheres: vec![sphere_a, sphere_b, shiny_sphere, floor],
+    RenderScene {
         materials: vec![shiny_green, rough_blue, glossy_pink, shiny_orange],
-        sky_color: vec3a(0., 0.04, 0.1),
-    };
-
-    scene
+        spheres: vec![sphere_a, sphere_b, shiny_sphere, floor],
+        sky_color: [0., 0.04, 0.1],
+    }
 }
 
 async fn run(event_loop: EventLoop<()>, window: Window) {
@@ -133,9 +140,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let camera = Camera::new(size.width, size.height);
 
-    let scene = define_scene();
-
-    let mut scene_renderer = Renderer::new(camera, scene);
+    let scene = define_render_scene();
 
     let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
 
@@ -146,13 +151,45 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     // Create the logical device and command queue
     let (device, queue) = generate_device_and_queue(&adapter).await;
 
-    let bind_group_layout = generate_bind_group_layout(&device);
+    // Create uniform buffer
+    let params = Params {
+        width: size.width,
+        accumulation_index: 1,
+        sky_color: scene.sky_color,
+        accumulate: 1,
+        _padding: [0; 8],
+    };
+
+    let (mut scene_renderer, compute_bindgroup_layout, compute_bind_group) =
+        Renderer::new(camera, scene, &device, &size, params);
+
+    // ################################ GPU COMPUTE PIPELINE #########################################
+
+    let compute_module = device.create_shader_module(include_wgsl!("compute_shader.wgsl"));
+
+    let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Compute Pipeline Layout"),
+        bind_group_layouts: &[&compute_bindgroup_layout],
+        push_constant_ranges: &[],
+    });
+
+    let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("Compute Pipeline"),
+        layout: Some(&compute_pipeline_layout),
+        module: &compute_module,
+        entry_point: "main",
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+    });
+
+    // #####################################################################################
+    // ################################ RENDER PIPELINE #########################################
 
     let mut texture = create_texture(&device, size);
 
     let sampler: wgpu::Sampler = generate_sampler(&device);
 
-    let mut bind_group = create_device_bindgroup(&device, &bind_group_layout, &texture, &sampler);
+    let (mut bind_group_layout, mut bind_group) =
+        create_device_bindgroup(&device, &texture, &sampler);
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
@@ -167,7 +204,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         format: texture.format(),
         width: size.width,
         height: size.height,
-        present_mode: wgpu::PresentMode::Fifo,
+        present_mode: wgpu::PresentMode::Immediate,
         desired_maximum_frame_latency: 2,
         alpha_mode: wgpu::CompositeAlphaMode::Auto,
         view_formats: vec![texture.format()],
@@ -203,6 +240,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     event_loop
         .run(/*move*/ |event, target| {
             // Have the closure take ownership of the resources.
+
             // `event_loop.run` never returns, therefore we must do this to ensure
             // the resources are properly cleaned up.
 
@@ -217,11 +255,10 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     let start_time = Instant::now();
 
                     match event {
-                        WindowEvent::CursorMoved {
-                            device_id: _,
-                            position: _,
-                        } => {
-                            window.request_redraw();
+                        WindowEvent::CursorMoved { position, .. } => {
+                            if movement_mode {
+                                current_mouse_pos = pos2(position.x as f32, position.y as f32);
+                            }
                         }
                         WindowEvent::Resized(new_size) => {
                             size.width = new_size.width.max(1);
@@ -238,16 +275,16 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 (size.height as f32 / 2.).round(),
                             );
 
-                            scene_renderer.on_resize(size.width, size.height);
+                            scene_renderer.on_resize(&size, &device, &queue);
 
                             texture = create_texture(&device, size);
 
-                            bind_group = create_device_bindgroup(
-                                &device,
-                                &bind_group_layout,
-                                &texture,
-                                &sampler,
-                            );
+                            (bind_group_layout, bind_group) =
+                                create_device_bindgroup(&device, &texture, &sampler);
+
+                            // ###################### COMPUTE RESIZING ##################################
+
+                            // ####################################################
 
                             surface.configure(&device, &surface_config);
                             // On macos the window needs to be redrawn manually after resizing
@@ -294,7 +331,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                                 current_mouse_pos = mouse_resting_position;
 
-                                println!("cursor grabbed");
                                 window.request_redraw();
                             }
                             ElementState::Released => {
@@ -304,19 +340,23 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     .set_cursor_grab(CursorGrabMode::None)
                                     .expect("Failed to release cursor");
                                 window.set_cursor_visible(true);
+
                                 window
                                     .set_cursor_position(PhysicalPosition::new(
                                         last_mouse_pos.x as u32,
                                         last_mouse_pos.y as u32,
                                     ))
                                     .expect("couldn't set cursor pos");
-                                println!("cursor released");
 
                                 window.request_redraw();
                             }
                         },
 
                         WindowEvent::RedrawRequested => {
+                            //println!(
+                            //    "time 1: {}",
+                            //    start_time.elapsed().as_micros() as f32 / 1000.
+                            //);
                             if movement_mode {
                                 window
                                     .set_cursor_position(PhysicalPosition::new(
@@ -325,6 +365,29 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     ))
                                     .expect("couldn't set cursor pos");
                             }
+
+                            // #############################################################################################
+
+                            let mut encoder =
+                                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                    label: Some("Encoder"),
+                                });
+
+                            scene_renderer.update_frame(
+                                &mut encoder,
+                                &queue,
+                                &compute_pipeline,
+                                &compute_bind_group,
+                                &texture,
+                            );
+
+                            // #############################################################################################
+
+                            //println!(
+                            //    "time 3: {}",
+                            //    start_time.elapsed().as_micros() as f32 / 1000.
+                            //);
+
                             // Logic to redraw the window
                             let frame: wgpu::SurfaceTexture = surface
                                 .get_current_texture()
@@ -334,18 +397,12 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 .texture
                                 .create_view(&wgpu::TextureViewDescriptor::default());
 
-                            let mut encoder: wgpu::CommandEncoder =
-                                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                                    label: None,
-                                });
-
-                            let pixel_colors = scene_renderer.generate_pixels();
-
-                            update_render_queue(&queue, &texture, &size, &pixel_colors);
+                            //let pixel_colors = scene_renderer.generate_pixels();
 
                             setup_renderpass(&mut encoder, &view, &render_pipeline, &bind_group);
 
-                            let full_output = create_ui(&mut platform, &mut scene_renderer);
+                            let full_output =
+                                create_ui(&device, &queue, &mut platform, &mut scene_renderer);
 
                             let paint_jobs = platform
                                 .context()
@@ -378,6 +435,11 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                             frame.present();
 
+                            //println!(
+                            //    "time 4: {}",
+                            //    start_time.elapsed().as_micros() as f32 / 1000.
+                            //);
+
                             //egui_rpass
                             //    .remove_textures(full_output.textures_delta)
                             //    .expect("textures removed");
@@ -387,14 +449,15 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             let elapsed = start_time.elapsed().as_micros() as f32 / 1000.;
 
                             if movement_mode {
-                                current_mouse_pos = platform
-                                    .context()
-                                    .input(|i: &egui::InputState| i.pointer.hover_pos())
-                                    .unwrap();
-
                                 let delta = current_mouse_pos - mouse_resting_position;
 
-                                scene_renderer.on_update(delta, &elapsed, &platform.context());
+                                scene_renderer.on_update(
+                                    &device,
+                                    &queue,
+                                    delta,
+                                    &elapsed,
+                                    &platform.context(),
+                                );
                             }
 
                             if platform
@@ -416,33 +479,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
             }
         })
         .unwrap();
-}
-
-fn update_render_queue(
-    queue: &wgpu::Queue,
-    texture: &wgpu::Texture,
-    size: &winit::dpi::PhysicalSize<u32>,
-    pixel_colors: &[u8],
-) {
-    queue.write_texture(
-        wgpu::ImageCopyTexture {
-            texture,
-            mip_level: 0,
-            origin: wgpu::Origin3d::ZERO,
-            aspect: wgpu::TextureAspect::All,
-        },
-        pixel_colors,
-        wgpu::ImageDataLayout {
-            offset: 0,
-            bytes_per_row: Some(size.width * 4),
-            rows_per_image: Some(size.height),
-        },
-        wgpu::Extent3d {
-            width: size.width,
-            height: size.height,
-            depth_or_array_layers: 1,
-        },
-    );
 }
 
 fn create_texture(device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) -> wgpu::Texture {
@@ -467,26 +503,53 @@ fn create_texture(device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) ->
 
 fn create_device_bindgroup(
     device: &wgpu::Device,
-    bind_group_layout: &wgpu::BindGroupLayout,
+
     texture: &wgpu::Texture,
     sampler: &wgpu::Sampler,
-) -> BindGroup {
+) -> (wgpu::BindGroupLayout, BindGroup) {
     let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: bind_group_layout,
+    let texture_bind = 0;
+    let sampler_bind = 1;
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Texture Bind Group Layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: texture_bind,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: sampler_bind,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    });
+
+    let render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &bind_group_layout,
         entries: &[
             wgpu::BindGroupEntry {
-                binding: 0,
+                binding: texture_bind,
                 resource: wgpu::BindingResource::TextureView(&texture_view),
             },
             wgpu::BindGroupEntry {
-                binding: 1,
+                binding: sampler_bind,
                 resource: wgpu::BindingResource::Sampler(sampler),
             },
         ],
         label: Some("Texture Bind Group"),
-    })
+    });
+
+    (bind_group_layout, render_bind_group)
 }
 
 fn setup_renderpass(
@@ -514,40 +577,13 @@ fn setup_renderpass(
     rpass.draw(0..6, 0..1);
 }
 
-fn generate_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
-    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("Texture Bind Group Layout"),
-        entries: &[
-            wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            },
-            wgpu::BindGroupLayoutEntry {
-                binding: 1,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                count: None,
-            },
-        ],
-    })
-}
-
 fn create_render_pipeline(
     device: &wgpu::Device,
     pipeline_layout: &PipelineLayout,
     swapchain_format: TextureFormat,
 ) -> wgpu::RenderPipeline {
     // Load the shaders from disk
-    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: None,
-        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader.wgsl"))),
-    });
+    let shader = device.create_shader_module(include_wgsl!("render_shader.wgsl"));
 
     let render_pipeline: wgpu::RenderPipeline =
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -577,7 +613,7 @@ fn create_render_pipeline(
 async fn create_adapter(instance: &wgpu::Instance, surface: &Surface<'_>) -> wgpu::Adapter {
     instance
         .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
+            power_preference: wgpu::PowerPreference::HighPerformance,
             force_fallback_adapter: false,
             // Request an adapter which can render to our surface
             compatible_surface: Some(surface),
@@ -625,7 +661,14 @@ fn generate_instance() -> Instance {
     wgpu::Instance::new(instance_desc)
 }
 
-fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOutput {
+// ######################### compute ########################################
+
+fn create_ui(
+    device: &wgpu::Device,
+    queue: &Queue,
+    platform: &mut Platform,
+    screne_renderer: &mut Renderer,
+) -> FullOutput {
     platform.begin_frame();
 
     // important, create a egui context, do not use platform.conmtext()
@@ -646,7 +689,12 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
             ui.set_max_width(100.0);
 
             ui.vertical_centered(|ui| {
-                ui.checkbox(&mut screne_renderer.accumulate, "light accumulation");
+                if ui
+                    .checkbox(&mut screne_renderer.accumulate, "light accumulation")
+                    .changed()
+                {
+                    interacted = true;
+                };
 
                 ui.label("light mode:");
                 if ui
@@ -664,7 +712,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
 
                 ui.label("sky color:");
                 if ui
-                    .color_edit_button_rgb(sky_color.as_mut())
+                    .color_edit_button_rgb(sky_color)
                     .on_hover_text("color")
                     .changed()
                 {
@@ -692,7 +740,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                         ui.horizontal(|ui| {
                             if ui
                                 .add(
-                                    DragValue::new(&mut sphere_position.x)
+                                    DragValue::new(&mut sphere_position[0])
                                         .speed(0.1)
                                         .clamp_range(-100.0..=100.0)
                                         .prefix("X: "),
@@ -704,7 +752,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
 
                             if ui
                                 .add(
-                                    DragValue::new(&mut sphere_position.y)
+                                    DragValue::new(&mut sphere_position[1])
                                         .speed(0.1)
                                         .clamp_range(-100.0..=0.0)
                                         .prefix("Y: "),
@@ -715,7 +763,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                             };
                             if ui
                                 .add(
-                                    DragValue::new(&mut sphere_position.z)
+                                    DragValue::new(&mut sphere_position[2])
                                         .speed(0.1)
                                         .clamp_range(-100.0..=100.0)
                                         .prefix("Z: "),
@@ -729,7 +777,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
 
                     // sliders for radius, roughness and metallic
                     ui.vertical_centered_justified(|ui: &mut egui::Ui| {
-                        let material_index = current_sphere.material_index;
+                        let material_index = current_sphere.material_index as usize;
                         let current_material = &mut screne_renderer.scene.materials[material_index];
 
                         let sphere_color = &mut current_material.albedo;
@@ -740,7 +788,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
 
                         ui.horizontal(|ui| {
                             if ui
-                                .color_edit_button_rgb(sphere_color.as_mut())
+                                .color_edit_button_rgb(sphere_color)
                                 .on_hover_text("color")
                                 .changed()
                             {
@@ -748,7 +796,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
                             };
 
                             if ui
-                                .color_edit_button_rgb(sphere_emission_color.as_mut())
+                                .color_edit_button_rgb(sphere_emission_color)
                                 .on_hover_text("emission")
                                 .changed()
                             {
@@ -819,7 +867,7 @@ fn create_ui(platform: &mut Platform, screne_renderer: &mut Renderer) -> FullOut
         });
 
     if interacted {
-        screne_renderer.reset_accumulation()
+        screne_renderer.update_scene(device, queue)
     }
 
     egui_context.end_frame()
