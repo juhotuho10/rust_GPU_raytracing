@@ -371,16 +371,15 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     .expect("couldn't set cursor pos");
                             }
 
-                            // ###################################### update data step ########################################
-
-                            //params.accumulation_index = 1;
-
-                            //queue.write_buffer(&params_buffer, 0, bytemuck::cast_slice(&[params]));
-
                             // #############################################################################################
 
+                            let mut encoder =
+                                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                    label: Some("Encoder"),
+                                });
+
                             scene_renderer.update_frame(
-                                &device,
+                                &mut encoder,
                                 &queue,
                                 &compute_pipeline,
                                 &compute_bind_group,
@@ -402,11 +401,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             let view: wgpu::TextureView = frame
                                 .texture
                                 .create_view(&wgpu::TextureViewDescriptor::default());
-
-                            let mut encoder: wgpu::CommandEncoder =
-                                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                                    label: None,
-                                });
 
                             //let pixel_colors = scene_renderer.generate_pixels();
 

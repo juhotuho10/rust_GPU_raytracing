@@ -10,7 +10,7 @@ use glam::{vec3a, Vec3A};
 
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 
-use wgpu::{BindGroup, BindGroupLayout, Device, Queue, Texture};
+use wgpu::{BindGroup, BindGroupLayout, CommandEncoder, Device, Queue, Texture};
 
 #[derive(Debug, Clone)]
 pub struct RenderScene {
@@ -326,7 +326,7 @@ impl Renderer {
 
     pub fn update_frame(
         &mut self,
-        device: &Device,
+        encoder: &mut CommandEncoder,
         queue: &Queue,
         compute_pipeline: &wgpu::ComputePipeline,
         compute_bind_group: &BindGroup,
@@ -349,32 +349,22 @@ impl Renderer {
         }
         // ###################################### compute step ########################################
 
-        let mut compute_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Compute Encoder"),
-        });
-
         {
-            let mut compute_pass =
-                compute_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                    label: Some("Compute Pass"),
-                    timestamp_writes: None,
-                });
+            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Compute Pass"),
+                timestamp_writes: None,
+            });
             compute_pass.set_pipeline(compute_pipeline);
             compute_pass.set_bind_group(0, compute_bind_group, &[]);
             compute_pass.dispatch_workgroups((width + 7) / 8, (height + 7) / 8, 1);
         }
 
-        queue.submit(Some(compute_encoder.finish()));
-
         // ###################################### copying buffers to texture ########################################
-        let mut copy_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Copy Encoder"),
-        });
 
         let bytes_per_row = self.calculate_bytes_per_row(width);
 
         // Copy the output buffer to the texture
-        copy_encoder.copy_buffer_to_texture(
+        encoder.copy_buffer_to_texture(
             wgpu::ImageCopyBuffer {
                 buffer: &self.buffers.output_buffer,
                 layout: wgpu::ImageDataLayout {
@@ -395,8 +385,6 @@ impl Renderer {
                 depth_or_array_layers: 1,
             },
         );
-
-        queue.submit(Some(copy_encoder.finish()));
     }
 
     pub fn calculate_bytes_per_row(&self, width: u32) -> u32 {
