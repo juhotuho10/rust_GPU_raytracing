@@ -6,8 +6,6 @@ use super::buffers;
 
 use egui::Context;
 
-use rayon::{ThreadPool, ThreadPoolBuilder};
-
 use wgpu::{BindGroup, BindGroupLayout, CommandEncoder, Device, Queue, Texture};
 
 #[derive(Debug, Clone)]
@@ -24,9 +22,6 @@ pub struct Renderer {
     pub light_mode: u32,
     accumulation_index: u32,
     buffers: buffers::DataBuffers,
-
-    // ###############
-    pub thread_pool: ThreadPool,
 }
 
 impl Renderer {
@@ -35,17 +30,11 @@ impl Renderer {
         scene: RenderScene,
         device: &Device,
         size: &winit::dpi::PhysicalSize<u32>,
-        params: &[Params],
+        params: Params,
     ) -> (Renderer, BindGroupLayout, BindGroup) {
-        let available_threads = rayon::current_num_threads();
-        let used_threads = available_threads / 2;
-
-        let thread_pool = ThreadPoolBuilder::new()
-            .num_threads(used_threads)
-            .build()
-            .expect("couldn't construct threadpool");
-
         let camera_rays = camera.recalculate_ray_directions();
+
+        let accumulate = params.accumulate == 1;
 
         let (buffers, bind_group_layout, compute_bind_group) = buffers::DataBuffers::new(
             device,
@@ -53,18 +42,16 @@ impl Renderer {
             &camera_rays,
             &scene.materials,
             &scene.spheres,
-            params,
+            &[params],
         );
 
         let renderer = Renderer {
             camera,
             scene,
 
-            accumulate: true,
+            accumulate,
             light_mode: 0,
-
             accumulation_index: 1,
-            thread_pool,
             buffers,
         };
 

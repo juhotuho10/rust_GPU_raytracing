@@ -161,11 +161,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     };
 
     let (mut scene_renderer, compute_bindgroup_layout, compute_bind_group) =
-        Renderer::new(camera, scene, &device, &size, &[params]);
-
-    // ################################ GPU DATA PIPELINE #########################################
-
-    // #####################################################################################
+        Renderer::new(camera, scene, &device, &size, params);
 
     // ################################ GPU COMPUTE PIPELINE #########################################
 
@@ -335,7 +331,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                                 current_mouse_pos = mouse_resting_position;
 
-                                println!("cursor grabbed");
                                 window.request_redraw();
                             }
                             ElementState::Released => {
@@ -352,7 +347,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                         last_mouse_pos.y as u32,
                                     ))
                                     .expect("couldn't set cursor pos");
-                                println!("cursor released");
 
                                 window.request_redraw();
                             }
