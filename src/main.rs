@@ -156,7 +156,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         width: size.width,
         accumulation_index: 1,
         sky_color: scene.sky_color,
-        _padding: [0; 12],
+        accumulate: 1,
+        _padding: [0; 8],
     };
 
     let (mut scene_renderer, compute_bindgroup_layout, compute_bind_group) =
@@ -694,7 +695,12 @@ fn create_ui(
             ui.set_max_width(100.0);
 
             ui.vertical_centered(|ui| {
-                ui.checkbox(&mut screne_renderer.accumulate, "light accumulation");
+                if ui
+                    .checkbox(&mut screne_renderer.accumulate, "light accumulation")
+                    .changed()
+                {
+                    interacted = true;
+                };
 
                 ui.label("light mode:");
                 if ui

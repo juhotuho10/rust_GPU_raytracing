@@ -5,10 +5,10 @@ struct Params {
     sky_color: vec3<f32>,
     width: u32,
     accumulation_index: u32,
+    accumulate: u32,
     // explicit padding to match 16 byte alignment
     _padding1: u32,
     _padding2: u32,
-    _padding3: u32,  
 };
 
 
@@ -76,16 +76,28 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let f32_color: vec3<f32> = per_pixel(index, bounces);
 
-    accumulation_data[index] += f32_color;
+    var render_color = vec3<f32>(0.0);
 
+    if params.accumulate == 1{
+        
+        accumulation_data[index] += f32_color;
+
+        var accumulated_color = accumulation_data[index] / f32(params.accumulation_index);
+
+        // first frame in accumulation had some strobing effect, this is here to limit that
+        if params.accumulation_index > 3{
+            render_color = clamp(accumulated_color, vec3<f32>(0.0), vec3<f32>(1.0));
+        }else{
+            render_color = clamp(f32_color, vec3<f32>(0.0), vec3<f32>(1.0));
+        }
+        
+
+    }else{
+        render_color = clamp(f32_color, vec3<f32>(0.0), vec3<f32>(1.0));
+    }
     
-    var accumulated_color = accumulation_data[index] / f32(params.accumulation_index);
-
-    // clamp values between 0 and 1
-    accumulated_color = clamp(accumulated_color, vec3<f32>(0.0), vec3<f32>(1.0));
-
     // pack 4 f32 values into a single u32 (4x u8 rgba color)
-    output_data[index] = pack_to_u32(accumulated_color);
+    output_data[index] = pack_to_u32(render_color);
 
 
     /*let f32_color: vec3<f32> = per_pixel(index, bounces);
@@ -242,6 +254,7 @@ fn pcg_hash(seed: ptr<function, u32>) -> f32 {
     var word: u32 = (state >> ((state >> 28u) + 4u)) ^ state;
     word = word * 277803737u;
 
+    // change seed value in place
     *seed = (word >> 22u) ^ word;
 
     return normalize_u32(*seed);
