@@ -56,12 +56,6 @@ struct Ray {
     direction: vec3<f32>,
 }
 
-struct PcgResult {
-    new_seed: u32,
-    scaler: vec3<f32>,
-};
-
-
 
 @group(0) @binding(0) var<storage, read> params: Params;
 @group(0) @binding(1) var<storage, read> camera_rays: array<vec3<f32>>;
@@ -90,24 +84,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     // pack 4 f32 values into a single u32 (4x u8 rgba color)
     output_data[index] = pack_to_u32(accumulated_color);
-    
-
-    /*let ray_origin = ray_camera.origin;
-    let ray_direction = camera_rays[index];
-    let radius = 0.5;
-
-    let a = dot(ray_direction, ray_direction);
-    let b = dot(ray_origin, ray_direction) * 2.0;
-    let c = dot(ray_origin, ray_origin) - (radius * radius);
-
-    let discriminant = b * b - 4.0 * a * c;
-
-    if discriminant > 0 {
-        output_data[index] = pack_to_u32(vec3<f32>(1.0, 0.0, 1.0)); // red
-    } else {
-        output_data[index] = pack_to_u32(vec3<f32>(0.0, 0.0, 0.0)); // black
-    }*/
-
 
 
     /*let f32_color: vec3<f32> = per_pixel(index, bounces);
@@ -170,9 +146,8 @@ fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
 
         ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
 
-        let result: PcgResult = random_scaler(seed);
-        seed = result.new_seed;
-        let scaler = result.scaler;
+        let scaler: vec3<f32> = random_scaler(&seed);
+
 
         ray.direction = normalize(hit_payload.world_normal + scaler);
 
@@ -232,31 +207,37 @@ fn trace_ray(ray: Ray) -> HitPayload{
         return closest_hit(ray, hit_distance, u32(closest_sphere_index));
     }
 
-    
 }
 
-fn pcg_hash(seed: u32) -> u32 {
-    var state: u32 = seed * 747796405u + 2891336453u;
+fn pcg_hash(seed: ptr<function, u32>) -> f32 {
+    // random float between 0 and 1
+    var state: u32 = *seed * 747796405u + 2891336453u;
 
     var word: u32 = (state >> ((state >> 28u) + 4u)) ^ state;
     word = word * 277803737u;
 
-    return (word >> 22u) ^ word;
+    *seed = (word >> 22u) ^ word;
+
+    return f32(*seed) / 4294967296.0;
 }
 
-fn random_scaler(seed: u32) -> PcgResult{
+
+fn random_scaler(seed: ptr<function, u32>) -> vec3<f32>{
+    // random vec3 scaler
     var scaler = vec3<f32>(0.0);
-    var new_seed = pcg_hash(seed);
-    scaler.x = f32(new_seed) / f32(U32_MAX);
+    scaler.x = normal_distribution(seed);
+    scaler.y = normal_distribution(seed);
+    scaler.z = normal_distribution(seed);
 
-    new_seed = pcg_hash(new_seed);
-    scaler.y = f32(new_seed) / f32(U32_MAX);
+    return scaler;
+}
 
-    new_seed = pcg_hash(new_seed);
-    scaler.z = f32(new_seed) / f32(U32_MAX);
+fn normal_distribution(seed: ptr<function, u32>) -> f32{
+    // returns normally distributed float
+    let theta: f32 = 2.0 * 3.1415926 * pcg_hash(seed);
+    let rho: f32 = sqrt(-2.0 * log(pcg_hash(seed)));
+    return rho * cos(theta);
 
-    scaler = scaler * 2.0 - 1.0;
-    return PcgResult(new_seed, scaler);
 }
 
 fn miss(ray: Ray) -> HitPayload{
@@ -266,6 +247,11 @@ fn miss(ray: Ray) -> HitPayload{
     0u
     );
 }
+
+fn normalize_u32(value: u32) -> f32{
+    return f32(value) / f32(U32_MAX);
+}
+
 
 fn closest_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
     let closest_sphere: SceneSphere = sphere_array[object_index];
