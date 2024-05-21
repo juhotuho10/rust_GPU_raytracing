@@ -25,7 +25,6 @@ use winit::{
 
 use egui_wgpu_backend::{RenderPass as EguiRenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
-use glam::vec3a;
 
 use std::time::Instant;
 
@@ -119,7 +118,7 @@ fn define_render_scene() -> RenderScene {
     RenderScene {
         materials: vec![shiny_green, rough_blue, glossy_pink, shiny_orange],
         spheres: vec![sphere_a, sphere_b, shiny_sphere, floor],
-        sky_color: vec3a(0., 0.04, 0.1),
+        sky_color: [0., 0.04, 0.1],
     }
 }
 
@@ -156,7 +155,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let params = Params {
         width: size.width,
         accumulation_index: 1,
-        _padding: [0; 8],
+        sky_color: scene.sky_color,
+        _padding: [0; 12],
     };
 
     let (mut scene_renderer, compute_bindgroup_layout, compute_bind_group) =
@@ -712,7 +712,7 @@ fn create_ui(
 
                 ui.label("sky color:");
                 if ui
-                    .color_edit_button_rgb(sky_color.as_mut())
+                    .color_edit_button_rgb(sky_color)
                     .on_hover_text("color")
                     .changed()
                 {

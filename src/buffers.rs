@@ -3,9 +3,11 @@ use wgpu::{util::DeviceExt, BindGroup, BindGroupLayout, Buffer, Device, Queue};
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Params {
+    pub sky_color: [f32; 3],     // vec3, aligned to 16 bytes
     pub width: u32,              // float, aligned to 4 bytes
     pub accumulation_index: u32, // u32, aligned to 4 bytes
-    pub _padding: [u8; 8],       // padding to ensure 16-byte alignment
+
+    pub _padding: [u8; 12], // padding to ensure 16-byte alignment
 }
 
 #[repr(C)]

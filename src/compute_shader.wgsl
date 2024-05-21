@@ -2,11 +2,13 @@ const F32_MAX: f32 = 3.4028235e+38;
 const U32_MAX: u32 = 4294967295u;
 
 struct Params {
+    sky_color: vec3<f32>,
     width: u32,
     accumulation_index: u32,
     // explicit padding to match 16 byte alignment
     _padding1: u32,
     _padding2: u32,
+    _padding3: u32,  
 };
 
 
@@ -122,7 +124,7 @@ fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
     
     var light_contribution = vec3<f32>(1.0);
     var light = vec3<f32>(0.0);
-    let sky_color = vec3<f32>(0.0, 0.04, 0.1);
+
 
     var seed: u32 = index * params.accumulation_index * 326624u;
 
@@ -131,7 +133,7 @@ fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
         let hit_payload: HitPayload = trace_ray(ray);
 
         if hit_payload.hit_distance < 0 {
-            light += sky_color * light_contribution;
+            light += params.sky_color * light_contribution;
             break;
         }
 
@@ -140,16 +142,15 @@ fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
         let material_index: u32 = closest_sphere.material_index;
         let current_material: SceneMaterial = material_array[material_index];
 
-        light += current_material.emission_color * current_material.emission_power * light_contribution;
+        let emitted_light = current_material.emission_color * current_material.emission_power;
+        light += emitted_light * light_contribution;
 
         light_contribution *= current_material.albedo * current_material.metallic;
 
         ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
 
-        let scaler: vec3<f32> = random_scaler(&seed);
 
-
-        ray.direction = normalize(hit_payload.world_normal + scaler);
+        ray.direction = normalize(hit_payload.world_normal + random_scaler(&seed));
 
     }
 
@@ -209,6 +210,31 @@ fn trace_ray(ray: Ray) -> HitPayload{
 
 }
 
+fn miss(ray: Ray) -> HitPayload{
+    return HitPayload(-1.0, 
+    vec3<f32>(0.0),
+    vec3<f32>(0.0),
+    0u
+    );
+}
+
+
+
+fn closest_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
+    let closest_sphere: SceneSphere = sphere_array[object_index];
+
+    let hit_point: vec3<f32> = ray.origin + ray.direction * hit_distance;
+    let sphere_normal: vec3<f32> = normalize(hit_point - closest_sphere.position);
+
+
+    return HitPayload(hit_distance, 
+    hit_point,
+    sphere_normal,
+    object_index
+    );
+}
+
+
 fn pcg_hash(seed: ptr<function, u32>) -> f32 {
     // random float between 0 and 1
     var state: u32 = *seed * 747796405u + 2891336453u;
@@ -218,7 +244,7 @@ fn pcg_hash(seed: ptr<function, u32>) -> f32 {
 
     *seed = (word >> 22u) ^ word;
 
-    return f32(*seed) / 4294967296.0;
+    return normalize_u32(*seed);
 }
 
 
@@ -240,29 +266,8 @@ fn normal_distribution(seed: ptr<function, u32>) -> f32{
 
 }
 
-fn miss(ray: Ray) -> HitPayload{
-    return HitPayload(-1.0, 
-    vec3<f32>(0.0),
-    vec3<f32>(0.0),
-    0u
-    );
-}
-
 fn normalize_u32(value: u32) -> f32{
     return f32(value) / f32(U32_MAX);
 }
 
 
-fn closest_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
-    let closest_sphere: SceneSphere = sphere_array[object_index];
-
-    let hit_point: vec3<f32> = ray.origin + ray.direction * hit_distance;
-    let sphere_normal: vec3<f32> = normalize(hit_point - closest_sphere.position);
-
-
-    return HitPayload(hit_distance, 
-    hit_point,
-    sphere_normal,
-    object_index
-    );
-}

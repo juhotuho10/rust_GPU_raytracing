@@ -8,7 +8,7 @@ use egui::Context;
 
 use glam::{vec3a, Vec3A};
 
-use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
+use rayon::{ThreadPool, ThreadPoolBuilder};
 
 use wgpu::{BindGroup, BindGroupLayout, CommandEncoder, Device, Queue, Texture};
 
@@ -16,7 +16,7 @@ use wgpu::{BindGroup, BindGroupLayout, CommandEncoder, Device, Queue, Texture};
 pub struct RenderScene {
     pub spheres: Vec<SceneSphere>,
     pub materials: Vec<SceneMaterial>,
-    pub sky_color: Vec3A,
+    pub sky_color: [f32; 3],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -281,9 +281,11 @@ impl Renderer {
         self.accumulation_index = 1;
 
         let params = Params {
+            sky_color: self.scene.sky_color,
             width: self.camera.viewport_width,
             accumulation_index: self.accumulation_index,
-            _padding: [0; 8],
+
+            _padding: [0; 12],
         };
 
         self.buffers.reset_accumulation(device, queue, &[params]);
@@ -338,9 +340,10 @@ impl Renderer {
 
         if self.accumulate {
             let params = Params {
-                width,
+                sky_color: self.scene.sky_color,
+                width: self.camera.viewport_width,
                 accumulation_index: self.accumulation_index,
-                _padding: [0; 8],
+                _padding: [0; 12],
             };
 
             self.buffers.update_accumulation(queue, &[params]);
