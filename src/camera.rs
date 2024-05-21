@@ -142,53 +142,28 @@ impl Camera {
     }
 
     pub fn recalculate_ray_directions(&self) -> Vec<Ray> {
-        // converting normalized -1 to 1 directions into worldspace directions
-        /*for y in 0..self.viewport_height {
-            let y_coord = y as f32 / self.viewport_height as f32;
-            for x in 0..self.viewport_width {
-                let x_coord = x as f32 / self.viewport_width as f32;
-
-                // normalized between -1 and 1
-                let normalized_coord = vec2(x_coord, y_coord) * 2.0 - 1.0;
-
-                let target: Vec4 = self.inverse_projection
-                    * vec4(normalized_coord.x, normalized_coord.y, 1.0, 1.0);
-
-                let target_vec3: Vec3A = target.truncate().into();
-
-                let world_space_target: Vec4 = (target_vec3 / target.w).normalize().extend(0.0);
-
-                let ray_direction: Vec3A =
-                    (self.inverse_view * world_space_target).truncate().into();
-
-                // caching the ray directions so we dont need to calculate them every frame
-
-                let new_ray: Ray = Ray {
-                    origin: self.position,
-                    direction: ray_direction,
-                };
-
-                self.ray_directions[(x + y * self.viewport_width) as usize] = new_ray;
-            }
-        }*/
-
         // multithreadded implementation
-        let min_width = self.viewport_height.min(self.viewport_width) as f32;
+
+        let aspect_ratio = self.viewport_width as f32 / self.viewport_height as f32;
 
         // Create new ray directions in parallel
         let new_ray_directions: Vec<Ray> = (0..self.viewport_height)
             .into_par_iter()
             .flat_map(|y| {
-                let y_coord: f32 = y as f32 / min_width;
+                let y_coord: f32 = y as f32 / self.viewport_height as f32;
                 (0..self.viewport_width)
                     .map(|x| {
-                        let x_coord = x as f32 / min_width * 0.97;
+                        let x_coord = x as f32 / self.viewport_width as f32;
 
                         // normalized between -1 and 1
-                        let normalized_coord = vec2(x_coord, y_coord) * 2.0 - Vec2::ONE;
+                        let normalized_coord = vec2(x_coord, y_coord) * 2.0 - 1.0;
+
+                        // rescale for aspect ratio
+                        let adjusted_coord =
+                            vec2(normalized_coord.x * aspect_ratio, normalized_coord.y);
 
                         let target: Vec4 = self.inverse_projection
-                            * vec4(normalized_coord.x, normalized_coord.y, 1.0, 1.0);
+                            * vec4(adjusted_coord.x, adjusted_coord.y, 1.0, 1.0);
 
                         let target_vec3: Vec3A = target.truncate().into();
 

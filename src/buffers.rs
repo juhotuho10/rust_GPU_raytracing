@@ -1,10 +1,4 @@
-use wgpu::{
-    hal::empty::Encoder, util::DeviceExt, BindGroup, BindGroupLayout, Buffer, Device, Queue,
-};
-
-fn vec3_pad(x: f32, y: f32, z: f32) -> [f32; 4] {
-    [x, y, z, 0.0]
-}
+use wgpu::{util::DeviceExt, BindGroup, BindGroupLayout, Buffer, Device, Queue};
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]

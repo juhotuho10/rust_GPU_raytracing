@@ -139,6 +139,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let mut show_ui = true;
 
+    let mut ignore_input = 0;
+
     let camera = Camera::new(size.width, size.height);
 
     let scene = define_render_scene();
@@ -334,6 +336,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     .unwrap();
 
                                 current_mouse_pos = mouse_resting_position;
+                                ignore_input = 0;
 
                                 println!("cursor grabbed");
                                 window.request_redraw();
@@ -345,6 +348,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     .set_cursor_grab(CursorGrabMode::None)
                                     .expect("Failed to release cursor");
                                 window.set_cursor_visible(true);
+                                ignore_input = 0;
+
                                 window
                                     .set_cursor_position(PhysicalPosition::new(
                                         last_mouse_pos.x as u32,
@@ -467,13 +472,19 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                                 let delta = current_mouse_pos - mouse_resting_position;
 
-                                scene_renderer.on_update(
-                                    &device,
-                                    &queue,
-                                    delta,
-                                    &elapsed,
-                                    &platform.context(),
-                                );
+                                // here to fix mouse teleporting on first camera movement
+                                if ignore_input > 10 {
+                                    dbg!(delta);
+                                    scene_renderer.on_update(
+                                        &device,
+                                        &queue,
+                                        delta,
+                                        &elapsed,
+                                        &platform.context(),
+                                    );
+                                }
+
+                                ignore_input += 1;
                             }
 
                             if platform
