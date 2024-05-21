@@ -35,6 +35,18 @@ pub struct SceneSphere {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct SceneTriangle {
+    pub a: [f32; 3],
+    pub material_index: u32, // u32, aligned to 4 bytes
+    // vec3, aligned to 16 bytes
+    pub b: [f32; 3],
+    pub _padding: [u8; 4], // vec3, aligned to 16 bytes
+    pub c: [f32; 3],
+    pub _padding2: [u8; 4], // padding to ensure 16-byte alignment
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SceneMaterial {
     pub albedo: [f32; 3],         // vec3, aligned to 12 bytes
     pub roughness: f32,           // f32, aligned to 4 bytes
@@ -55,6 +67,7 @@ pub struct DataBuffers {
     pub material_buffer: Buffer,
     pub sphere_buffer: Buffer,
     pub accumulation_buffer: Buffer,
+    pub triangle_buffer: Buffer,
 }
 
 impl DataBuffers {
@@ -64,6 +77,7 @@ impl DataBuffers {
         camera_rays: &[Ray],
         material_array: &[SceneMaterial],
         sphere_array: &[SceneSphere],
+        triangle_array: &[SceneTriangle],
         params: &[Params],
     ) -> (DataBuffers, BindGroupLayout, BindGroup) {
         let ray_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -133,6 +147,13 @@ impl DataBuffers {
             mapped_at_creation: false,
         });
 
+        let triangle_buffer: Buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Triangle Buffer"),
+                contents: bytemuck::cast_slice(triangle_array),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
+
         let buffers = DataBuffers {
             output_buffer_size,
             accumulation_buffer_size,
@@ -144,6 +165,7 @@ impl DataBuffers {
             material_buffer,
             sphere_buffer,
             accumulation_buffer,
+            triangle_buffer,
         };
 
         let (bind_group_layout, compute_bind_group) = buffers.create_compute_bindgroup(device);
@@ -162,6 +184,7 @@ impl DataBuffers {
         let material_bind = 4;
         let sphere_bind = 5;
         let accumulation_bind = 6;
+        let triangle_bind = 7;
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -235,6 +258,16 @@ impl DataBuffers {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: triangle_bind,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
             label: None,
         });
@@ -270,6 +303,10 @@ impl DataBuffers {
                     binding: accumulation_bind,
                     resource: self.accumulation_buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: triangle_bind,
+                    resource: self.triangle_buffer.as_entire_binding(),
+                },
             ],
             label: None,
         });
@@ -299,6 +336,14 @@ impl DataBuffers {
 
     pub fn update_spheres(&self, queue: &Queue, new_spheres: &[SceneSphere]) {
         queue.write_buffer(&self.sphere_buffer, 0, bytemuck::cast_slice(new_spheres));
+    }
+
+    pub fn update_triangles(&self, queue: &Queue, new_triangles: &[SceneTriangle]) {
+        queue.write_buffer(
+            &self.triangle_buffer,
+            0,
+            bytemuck::cast_slice(new_triangles),
+        );
     }
 
     pub fn update_materials(&self, queue: &Queue, new_materials: &[SceneMaterial]) {

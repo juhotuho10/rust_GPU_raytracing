@@ -1,4 +1,4 @@
-use crate::buffers::{Params, RayCamera, SceneMaterial, SceneSphere};
+use crate::buffers::{Params, RayCamera, SceneMaterial, SceneSphere, SceneTriangle};
 
 use super::camera::Camera;
 
@@ -11,6 +11,7 @@ use wgpu::{BindGroup, BindGroupLayout, CommandEncoder, Device, Queue, Texture};
 #[derive(Debug, Clone)]
 pub struct RenderScene {
     pub spheres: Vec<SceneSphere>,
+    pub triangles: Vec<SceneTriangle>,
     pub materials: Vec<SceneMaterial>,
     pub sky_color: [f32; 3],
 }
@@ -42,6 +43,7 @@ impl Renderer {
             &camera_rays,
             &scene.materials,
             &scene.spheres,
+            &scene.triangles,
             &[params],
         );
 
@@ -122,6 +124,9 @@ impl Renderer {
 
         let new_spheres = &self.scene.spheres;
         self.buffers.update_spheres(queue, new_spheres);
+
+        let new_triangles = &self.scene.triangles;
+        self.buffers.update_triangles(queue, new_triangles);
 
         let new_materials = &self.scene.materials;
         self.buffers.update_materials(queue, new_materials);

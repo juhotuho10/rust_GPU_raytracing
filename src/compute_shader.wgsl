@@ -44,13 +44,24 @@ struct SceneSphere {
     _padding3: u32,       
 }
 
+struct SceneTriangle {
+    a: vec3<f32>,
+    material_index: u32,
+    b: vec3<f32>,
+     _padding1: u32,
+    c: vec3<f32>,
+    _padding2: u32,
+    // explicit padding to match 16 byte alignment
+   
+    
+}
 
 struct HitPayload {
     hit_distance: f32,
     world_position: vec3<f32>,
     world_normal: vec3<f32>,
 
-    object_index: u32,
+    material_index: u32,
 }
 
 struct Ray {
@@ -63,9 +74,10 @@ struct Ray {
 @group(0) @binding(1) var<storage, read> camera_rays: array<vec3<f32>>;
 @group(0) @binding(2) var<storage, read_write> output_data: array<u32>;
 @group(0) @binding(3) var<uniform> ray_camera: RayCamera;
-@group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, 4>;
+@group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, 5>;
 @group(0) @binding(5) var<uniform> sphere_array: array<SceneSphere, 4>;
 @group(0) @binding(6) var<storage, read_write> accumulation_data: array<vec3<f32>>;
+@group(0) @binding(7) var<uniform> triangle_array: array<SceneTriangle, 1>;
 
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -133,25 +145,27 @@ fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
         camera_rays[index]
     );
 
+    var seed: u32 = index * params.accumulation_index * 326624u;
+
+    ray.direction += random_scaler(&seed) * 0.001;
+
     
     var light_contribution = vec3<f32>(1.0);
     var light = vec3<f32>(0.0);
 
-
-    var seed: u32 = index * params.accumulation_index * 326624u;
+    
 
     for (var i: u32 = 0u; i < bounces; i = i + 1) {
 
         let hit_payload: HitPayload = trace_ray(ray);
 
-        if hit_payload.hit_distance < 0 {
+        if hit_payload.hit_distance == F32_MAX {
+            // we hit the sky
             light += params.sky_color * light_contribution;
             break;
         }
 
-        let hit_idex: u32 = hit_payload.object_index;
-        let closest_sphere: SceneSphere = sphere_array[hit_idex];
-        let material_index: u32 = closest_sphere.material_index;
+        let material_index: u32 = hit_payload.material_index;
         let current_material: SceneMaterial = material_array[material_index];
 
         let emitted_light = current_material.emission_color * current_material.emission_power;
@@ -159,10 +173,19 @@ fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
 
         light_contribution *= current_material.albedo * current_material.metallic;
 
-        ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
+        
 
 
-        ray.direction = normalize(hit_payload.world_normal + random_scaler(&seed));
+        // combination of ray math that worked well with triangles and spheres, 
+        // the triangle world normal calculation somehow doesnt want to work properly
+        ray.origin = ray.origin + hit_payload.hit_distance * ray.direction * 0.99999 + hit_payload.world_normal * 0.00015;
+
+        //ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
+
+        //ray.origin = hit_payload.world_position - ray.direction * 0.01;
+
+   
+        ray.direction = normalize(hit_payload.world_normal + random_normal_scaler(&seed));
 
     }
 
@@ -173,6 +196,20 @@ fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
 
 
 fn trace_ray(ray: Ray) -> HitPayload{
+
+    let sphere_hit_payload = check_spheres(ray);
+    let triangle_hit_payload = check_triangles(ray);
+
+    if sphere_hit_payload.hit_distance < triangle_hit_payload.hit_distance{
+        return sphere_hit_payload;
+    }else{
+        return triangle_hit_payload;
+    };
+    
+}
+
+fn check_spheres(ray: Ray) -> HitPayload{
+
     // (bx^2 + by^2)t^2 + 2*(axbx + ayby)t + (ax^2 + by^2 - r^2) = 0
     // where
     // a = ray origin
@@ -180,7 +217,7 @@ fn trace_ray(ray: Ray) -> HitPayload{
     // r = sphere radius
     // t = hit distance
 
-    var hit_distance = F32_MAX;
+    var closest_distance = F32_MAX;
     var closest_sphere_index: i32 = -1;
 
     let a: f32 = dot(ray.direction, ray.direction);
@@ -207,23 +244,97 @@ fn trace_ray(ray: Ray) -> HitPayload{
 
         let current_t: f32 = (-b - sqrt(discriminant)) / (2. * a);
 
-        if (current_t > 0.0) && (current_t < hit_distance) {
-            hit_distance = current_t;
+        if (current_t > 0.0) && (current_t < closest_distance) {
+            closest_distance = current_t;
             closest_sphere_index = sphere_index;
         }
         
     }
 
     if closest_sphere_index < 0 {
-        return miss(ray);
+        return miss();
     } else{
-        return closest_hit(ray, hit_distance, u32(closest_sphere_index));
+        return sphere_hit(ray, closest_distance, u32(closest_sphere_index));
     }
 
 }
 
-fn miss(ray: Ray) -> HitPayload{
-    return HitPayload(-1.0, 
+fn check_triangles(ray: Ray) -> HitPayload{
+
+    var closest_distance = F32_MAX;
+    var closest_hitpayload: HitPayload = miss();
+
+    let a: f32 = dot(ray.direction, ray.direction);
+
+    for (var triangle_index: i32 = 0; triangle_index < 1; triangle_index = triangle_index + 1) {
+        let tri: SceneTriangle = triangle_array[triangle_index];
+
+        let edge_ab: vec3<f32> = tri.b - tri.a;
+        let edge_ac: vec3<f32> = tri.c - tri.a;
+
+        let normal: vec3<f32> = cross(edge_ab, edge_ac);
+        
+        let ao: vec3<f32> = ray.origin - tri.a; 
+        let dao: vec3<f32> = cross(ao, ray.direction); 
+
+        let determinant: f32 = -dot(ray.direction, normal);
+
+        //if abs(determinant) < 1.0e-6 {
+        //    continue;
+        //}
+
+        let inv_det: f32 = 1 / determinant;
+
+        // calculate distance and intersection
+
+        let distance: f32 = dot(ao, normal) * inv_det;
+
+        if distance < 0.0 || distance > closest_distance {
+            continue;
+        }
+
+        let u: f32 = dot(edge_ac, dao) * inv_det;
+
+        if u < 0.0 {
+            continue;
+        }
+        let v: f32 = -dot(edge_ab, dao) * inv_det;
+
+        if v < 0.0 {
+            continue;
+        }
+        let w: f32 = 1 - u - v;
+
+        if w < 0.0 {
+            continue;
+        }
+
+        var face_normal: vec3<f32> = normalize(normal);
+
+        if determinant < 0.0 {
+            face_normal = -face_normal;
+        }
+
+
+        closest_distance = distance;
+
+
+        closest_hitpayload = HitPayload(
+            distance,
+            ray.origin * ray.direction * distance,
+            face_normal,
+            tri.material_index,
+
+        );
+  
+    };
+
+    return closest_hitpayload;
+
+}
+
+fn miss() -> HitPayload{
+    return HitPayload(F32_MAX, 
     vec3<f32>(0.0),
     vec3<f32>(0.0),
     0u
@@ -231,8 +342,7 @@ fn miss(ray: Ray) -> HitPayload{
 }
 
 
-
-fn closest_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
+fn sphere_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
     let closest_sphere: SceneSphere = sphere_array[object_index];
 
     let hit_point: vec3<f32> = ray.origin + ray.direction * hit_distance;
@@ -242,7 +352,7 @@ fn closest_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
     return HitPayload(hit_distance, 
     hit_point,
     sphere_normal,
-    object_index
+    closest_sphere.material_index,
     );
 }
 
@@ -261,14 +371,24 @@ fn pcg_hash(seed: ptr<function, u32>) -> f32 {
 }
 
 
-fn random_scaler(seed: ptr<function, u32>) -> vec3<f32>{
-    // random vec3 scaler
+fn random_normal_scaler(seed: ptr<function, u32>) -> vec3<f32>{
+    // normally distributed random vec3 scaler from -1 to 1
     var scaler = vec3<f32>(0.0);
     scaler.x = normal_distribution(seed);
     scaler.y = normal_distribution(seed);
     scaler.z = normal_distribution(seed);
 
     return scaler;
+}
+
+fn random_scaler(seed: ptr<function, u32>) -> vec3<f32>{
+    // random vec3 scaler from -1 to 1
+    var scaler = vec3<f32>(0.0);
+    scaler.x = pcg_hash(seed);
+    scaler.y = pcg_hash(seed);
+    scaler.z = pcg_hash(seed);
+
+    return scaler * 2.0 - 1.0;
 }
 
 fn normal_distribution(seed: ptr<function, u32>) -> f32{

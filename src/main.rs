@@ -2,7 +2,7 @@ mod buffers;
 mod camera;
 mod renderer;
 
-use buffers::{Params, SceneMaterial, SceneSphere};
+use buffers::{Params, SceneMaterial, SceneSphere, SceneTriangle};
 use camera::Camera;
 
 use egui::{pos2, Color32, DragValue, Frame, FullOutput};
@@ -82,6 +82,15 @@ fn define_render_scene() -> RenderScene {
         _padding: [0; 12],
     };
 
+    let cool_red = SceneMaterial {
+        albedo: [1.0, 0.0, 0.2],
+        roughness: 0.3,
+        emission_color: [1.0, 0.0, 0.2],
+        metallic: 0.9,
+        emission_power: 0.0,
+        _padding: [0; 12],
+    };
+
     let sphere_a: SceneSphere = SceneSphere {
         position: [0., -0.5, 0.],
         radius: 0.5,
@@ -115,9 +124,19 @@ fn define_render_scene() -> RenderScene {
         _padding: [0; 12],
     };
 
+    let triangle_a: SceneTriangle = SceneTriangle {
+        a: [6.0, -0.0, 1.],
+        material_index: 4,
+        b: [9.0, -3.0, 3.],
+        _padding: [0; 4],
+        c: [6.0, -0.0, 5.],
+        _padding2: [0; 4],
+    };
+
     RenderScene {
-        materials: vec![shiny_green, rough_blue, glossy_pink, shiny_orange],
+        materials: vec![shiny_green, rough_blue, glossy_pink, shiny_orange, cool_red],
         spheres: vec![sphere_a, sphere_b, shiny_sphere, floor],
+        triangles: vec![triangle_a],
         sky_color: [0., 0.04, 0.1],
     }
 }
