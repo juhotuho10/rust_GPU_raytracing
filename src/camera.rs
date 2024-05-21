@@ -37,7 +37,7 @@ impl Camera {
             far_clip: 100.0,
             vertical_fov: 45.0,
 
-            movement_speed: 0.5,
+            movement_speed: 1.0,
             turning_speed: 0.001,
 
             projection: Mat4::from_cols_slice(&[1.0; 16]),

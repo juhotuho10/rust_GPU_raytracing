@@ -139,8 +139,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let mut show_ui = true;
 
-    let mut ignore_input = 0;
-
     let camera = Camera::new(size.width, size.height);
 
     let scene = define_render_scene();
@@ -260,11 +258,10 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     let start_time = Instant::now();
 
                     match event {
-                        WindowEvent::CursorMoved {
-                            device_id: _,
-                            position: _,
-                        } => {
-                            window.request_redraw();
+                        WindowEvent::CursorMoved { position, .. } => {
+                            if movement_mode {
+                                current_mouse_pos = pos2(position.x as f32, position.y as f32);
+                            }
                         }
                         WindowEvent::Resized(new_size) => {
                             size.width = new_size.width.max(1);
@@ -336,7 +333,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     .unwrap();
 
                                 current_mouse_pos = mouse_resting_position;
-                                ignore_input = 0;
 
                                 println!("cursor grabbed");
                                 window.request_redraw();
@@ -348,7 +344,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     .set_cursor_grab(CursorGrabMode::None)
                                     .expect("Failed to release cursor");
                                 window.set_cursor_visible(true);
-                                ignore_input = 0;
 
                                 window
                                     .set_cursor_position(PhysicalPosition::new(
@@ -465,26 +460,15 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             let elapsed = start_time.elapsed().as_micros() as f32 / 1000.;
 
                             if movement_mode {
-                                current_mouse_pos = platform
-                                    .context()
-                                    .input(|i: &egui::InputState| i.pointer.hover_pos())
-                                    .unwrap();
-
                                 let delta = current_mouse_pos - mouse_resting_position;
 
-                                // here to fix mouse teleporting on first camera movement
-                                if ignore_input > 10 {
-                                    dbg!(delta);
-                                    scene_renderer.on_update(
-                                        &device,
-                                        &queue,
-                                        delta,
-                                        &elapsed,
-                                        &platform.context(),
-                                    );
-                                }
-
-                                ignore_input += 1;
+                                scene_renderer.on_update(
+                                    &device,
+                                    &queue,
+                                    delta,
+                                    &elapsed,
+                                    &platform.context(),
+                                );
                             }
 
                             if platform
