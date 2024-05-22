@@ -1,13 +1,16 @@
 mod buffers;
 mod camera;
 mod renderer;
+mod stl_to_triangles;
 
 use buffers::{Params, SceneMaterial, SceneSphere, SceneTriangle};
 use camera::Camera;
 
-use egui::{pos2, Color32, DragValue, Frame, FullOutput};
-
 use renderer::{RenderScene, Renderer};
+
+use stl_to_triangles::stl_triangles;
+
+use egui::{pos2, Color32, DragValue, Frame, FullOutput};
 
 use wgpu::{
     include_wgsl, Adapter, Backends, BindGroup, Device, Dx12Compiler, Gles3MinorVersion, Instance,
@@ -124,19 +127,30 @@ fn define_render_scene() -> RenderScene {
         _padding: [0; 12],
     };
 
-    let triangle_a: SceneTriangle = SceneTriangle {
-        a: [6.0, -0.0, 1.],
-        material_index: 4,
-        b: [9.0, -3.0, 3.],
-        _padding: [0; 4],
-        c: [6.0, -0.0, 5.],
-        _padding2: [0; 4],
-    };
+    //let triangle_a: SceneTriangle = SceneTriangle {
+    //    a: [6.0, -0.0, 1.],
+    //    b: [9.0, -3.0, 3.],
+    //    c: [6.0, -0.0, 5.],
+    //    material_index: 4,
+    //    _padding: [0; 4],
+    //    _padding2: [0; 4],
+    //};
+    //
+    //let triangle_b: SceneTriangle = SceneTriangle {
+    //    a: [6.0, -3.0, 1.],
+    //    b: [9.0, -6.0, 3.],
+    //    c: [6.0, -3.0, 5.],
+    //    material_index: 3,
+    //    _padding: [0; 4],
+    //    _padding2: [0; 4],
+    //};
+
+    let queen_triangles = stl_triangles("./3D_models/Queen.stl");
 
     RenderScene {
         materials: vec![shiny_green, rough_blue, glossy_pink, shiny_orange, cool_red],
         spheres: vec![sphere_a, sphere_b, shiny_sphere, floor],
-        triangles: vec![triangle_a],
+        triangles: queen_triangles,
         sky_color: [0., 0.04, 0.1],
     }
 }

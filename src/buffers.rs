@@ -38,11 +38,12 @@ pub struct SceneSphere {
 pub struct SceneTriangle {
     pub a: [f32; 3],
     pub material_index: u32, // u32, aligned to 4 bytes
-    // vec3, aligned to 16 bytes
     pub b: [f32; 3],
     pub _padding: [u8; 4], // vec3, aligned to 16 bytes
     pub c: [f32; 3],
     pub _padding2: [u8; 4], // padding to ensure 16-byte alignment
+    pub normal: [f32; 3],   // vec3, aligned to 12 bytes
+    pub _padding3: [u8; 4], // padding to ensure 16-byte alignment
 }
 
 #[repr(C)]

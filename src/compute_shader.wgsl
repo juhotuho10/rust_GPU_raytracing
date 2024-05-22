@@ -51,7 +51,13 @@ struct SceneTriangle {
      _padding1: u32,
     c: vec3<f32>,
     _padding2: u32,
+    normal: vec3<f32>,
+    _padding3: u32,
     // explicit padding to match 16 byte alignment
+    // explicit padding to match 16 byte alignment
+   
+    
+    // explicit padding to match 16 byte alignment   
    
     
 }
@@ -77,7 +83,7 @@ struct Ray {
 @group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, 5>;
 @group(0) @binding(5) var<uniform> sphere_array: array<SceneSphere, 4>;
 @group(0) @binding(6) var<storage, read_write> accumulation_data: array<vec3<f32>>;
-@group(0) @binding(7) var<uniform> triangle_array: array<SceneTriangle, 1>;
+@group(0) @binding(7) var<uniform> triangle_array: array<SceneTriangle, 202>;
 
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -91,7 +97,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     var pixel_color = accumulation_data[index];
 
-    let renders_times = 10u;
+    let renders_times = 2u;
 
     if params.accumulate == 1{
 
@@ -182,7 +188,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
 
         // combination of ray math that worked well with triangles and spheres, 
         // the triangle world normal calculation somehow doesnt want to work properly
-        ray.origin = ray.origin + hit_payload.hit_distance * ray.direction * 0.99999 + hit_payload.world_normal * 0.00015;
+        ray.origin = ray.origin + hit_payload.hit_distance * ray.direction + hit_payload.world_normal * 0.0001;
 
         //ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
 
@@ -270,7 +276,7 @@ fn check_triangles(ray: Ray) -> HitPayload{
 
     let a: f32 = dot(ray.direction, ray.direction);
 
-    for (var triangle_index: i32 = 0; triangle_index < 1; triangle_index = triangle_index + 1) {
+    for (var triangle_index: i32 = 0; triangle_index < 202; triangle_index = triangle_index + 1) {
         let tri: SceneTriangle = triangle_array[triangle_index];
 
         let edge_ab: vec3<f32> = tri.b - tri.a;
@@ -283,9 +289,9 @@ fn check_triangles(ray: Ray) -> HitPayload{
 
         let determinant: f32 = -dot(ray.direction, normal);
 
-        //if abs(determinant) < 1.0e-6 {
-        //    continue;
-        //}
+        if determinant < 1.0e-6 {
+            continue;
+        }
 
         let inv_det: f32 = 1 / determinant;
 
