@@ -163,6 +163,10 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
 
+    let frametime_target = 5;
+
+    let compute_target = 0.8;
+
     let instance = generate_instance();
 
     let surface: Surface = instance.create_surface(&window).unwrap();
@@ -253,6 +257,10 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let mut egui_rpass = EguiRenderPass::new(&device, surface_config.format, 1);
 
+    let mut fps_timer = Instant::now();
+
+    let mut compute_timer = Instant::now();
+
     /* ##############################################3################################# */
 
     //event_loop.set_control_flow(ControlFlow::Poll);
@@ -271,8 +279,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     window.request_redraw();
                 }
                 Event::WindowEvent { event, .. } => {
-                    let start_time = Instant::now();
-
                     match event {
                         WindowEvent::CursorMoved { position, .. } => {
                             if movement_mode {
@@ -376,114 +382,127 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             //    "time 1: {}",
                             //    start_time.elapsed().as_micros() as f32 / 1000.
                             //);
-                            if movement_mode {
-                                window
-                                    .set_cursor_position(PhysicalPosition::new(
-                                        mouse_resting_position.x,
-                                        mouse_resting_position.y,
-                                    ))
-                                    .expect("couldn't set cursor pos");
-                            }
 
                             // #############################################################################################
 
-                            let mut encoder =
-                                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                                    label: Some("Encoder"),
-                                });
-
-                            scene_renderer.update_frame(
-                                &mut encoder,
-                                &queue,
-                                &compute_pipeline,
-                                &compute_bind_group,
-                                &texture,
-                            );
-
-                            // #############################################################################################
-
-                            //println!(
-                            //    "time 3: {}",
-                            //    start_time.elapsed().as_micros() as f32 / 1000.
-                            //);
-
-                            // Logic to redraw the window
-                            let frame: wgpu::SurfaceTexture = surface
-                                .get_current_texture()
-                                .expect("Failed to acquire next swap chain texture");
-
-                            let view: wgpu::TextureView = frame
-                                .texture
-                                .create_view(&wgpu::TextureViewDescriptor::default());
-
-                            //let pixel_colors = scene_renderer.generate_pixels();
-
-                            setup_renderpass(&mut encoder, &view, &render_pipeline, &bind_group);
-
-                            let full_output =
-                                create_ui(&device, &queue, &mut platform, &mut scene_renderer);
-
-                            let paint_jobs = platform
-                                .context()
-                                .tessellate(full_output.shapes, full_output.pixels_per_point);
-                            // ######### Adding egui renderpass to the encoder ###########
-                            if show_ui {
-                                egui_rpass
-                                    .add_textures(&device, &queue, &full_output.textures_delta)
-                                    .expect("couldnt add textures");
-
-                                egui_rpass.update_buffers(
+                            if compute_timer.elapsed().as_micros() as f32 / 1000.0 > compute_target
+                            {
+                                compute_timer = Instant::now();
+                                scene_renderer.compute_frame(
                                     &device,
                                     &queue,
-                                    &paint_jobs,
-                                    &screen_descriptor,
+                                    &compute_pipeline,
+                                    &compute_bind_group,
+                                );
+                            }
+
+                            if fps_timer.elapsed().as_millis() > frametime_target {
+                                fps_timer = Instant::now();
+
+                                if movement_mode {
+                                    window
+                                        .set_cursor_position(PhysicalPosition::new(
+                                            mouse_resting_position.x,
+                                            mouse_resting_position.y,
+                                        ))
+                                        .expect("couldn't set cursor pos");
+                                }
+
+                                let mut encoder = device.create_command_encoder(
+                                    &wgpu::CommandEncoderDescriptor {
+                                        label: Some("Encoder"),
+                                    },
                                 );
 
-                                egui_rpass
-                                    .execute(
-                                        &mut encoder,
-                                        &view,
+                                scene_renderer.update_texture(&mut encoder, &texture);
+
+                                // #############################################################################################
+
+                                //println!(
+                                //    "time 3: {}",
+                                //    start_time.elapsed().as_micros() as f32 / 1000.
+                                //);
+
+                                // Logic to redraw the window
+                                let frame: wgpu::SurfaceTexture = surface
+                                    .get_current_texture()
+                                    .expect("Failed to acquire next swap chain texture");
+
+                                let view: wgpu::TextureView = frame
+                                    .texture
+                                    .create_view(&wgpu::TextureViewDescriptor::default());
+
+                                //let pixel_colors = scene_renderer.generate_pixels();
+
+                                setup_renderpass(
+                                    &mut encoder,
+                                    &view,
+                                    &render_pipeline,
+                                    &bind_group,
+                                );
+
+                                let full_output =
+                                    create_ui(&device, &queue, &mut platform, &mut scene_renderer);
+
+                                let paint_jobs = platform
+                                    .context()
+                                    .tessellate(full_output.shapes, full_output.pixels_per_point);
+                                // ######### Adding egui renderpass to the encoder ###########
+                                if show_ui {
+                                    egui_rpass
+                                        .add_textures(&device, &queue, &full_output.textures_delta)
+                                        .expect("couldnt add textures");
+
+                                    egui_rpass.update_buffers(
+                                        &device,
+                                        &queue,
                                         &paint_jobs,
                                         &screen_descriptor,
-                                        None,
-                                    )
-                                    .expect("egui render pass failed");
-                            }
-                            // ######### rendering the queue ###########
-                            queue.submit(Some(encoder.finish()));
+                                    );
 
-                            frame.present();
+                                    egui_rpass
+                                        .execute(
+                                            &mut encoder,
+                                            &view,
+                                            &paint_jobs,
+                                            &screen_descriptor,
+                                            None,
+                                        )
+                                        .expect("egui render pass failed");
+                                }
+                                // ######### rendering the queue ###########
+                                queue.submit(Some(encoder.finish()));
 
-                            //println!(
-                            //    "time 4: {}",
-                            //    start_time.elapsed().as_micros() as f32 / 1000.
-                            //);
+                                frame.present();
 
-                            //egui_rpass
-                            //    .remove_textures(full_output.textures_delta)
-                            //    .expect("textures removed");
+                                //println!(
+                                //    "time 4: {}",
+                                //    start_time.elapsed().as_micros() as f32 / 1000.
+                                //);
 
-                            //-------------
+                                egui_rpass
+                                    .remove_textures(full_output.textures_delta)
+                                    .expect("textures removed");
 
-                            let elapsed = start_time.elapsed().as_micros() as f32 / 1000.;
+                                //-------------
 
-                            if movement_mode {
-                                let delta = current_mouse_pos - mouse_resting_position;
+                                if movement_mode {
+                                    let delta = current_mouse_pos - mouse_resting_position;
 
-                                scene_renderer.on_update(
-                                    &device,
-                                    &queue,
-                                    delta,
-                                    &elapsed,
-                                    &platform.context(),
-                                );
-                            }
+                                    scene_renderer.on_update(
+                                        &device,
+                                        &queue,
+                                        delta,
+                                        &platform.context(),
+                                    );
+                                }
 
-                            if platform
-                                .context()
-                                .input(|i: &egui::InputState| i.key_pressed(egui::Key::F11))
-                            {
-                                show_ui = !show_ui;
+                                if platform
+                                    .context()
+                                    .input(|i: &egui::InputState| i.key_pressed(egui::Key::F11))
+                                {
+                                    show_ui = !show_ui;
+                                }
                             }
                         }
 

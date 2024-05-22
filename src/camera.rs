@@ -53,12 +53,7 @@ impl Camera {
         camera
     }
 
-    pub fn on_update(
-        &mut self,
-        mouse_delta: egui::Vec2,
-        timestep: &f32,
-        egui_context: &Context,
-    ) -> bool {
+    pub fn on_update(&mut self, mouse_delta: egui::Vec2, egui_context: &Context) -> bool {
         let up_direction = glam::Vec3A::Y;
 
         let right_direction = self.direction.cross(up_direction);
@@ -71,33 +66,33 @@ impl Camera {
             // forward - backward
             if input.key_down(egui::Key::W) {
                 // holding W
-                self.position += timestep * self.movement_speed * self.direction;
+                self.position += self.movement_speed * self.direction;
                 moved = true;
             } else if input.key_down(egui::Key::S) {
                 // holding S
-                self.position -= timestep * self.movement_speed * self.direction;
+                self.position -= self.movement_speed * self.direction;
                 moved = true;
             }
 
             // left - right
             if input.key_down(egui::Key::D) {
                 // holding D
-                self.position += timestep * self.movement_speed * right_direction;
+                self.position += self.movement_speed * right_direction;
                 moved = true;
             } else if input.key_down(egui::Key::A) {
                 // holding A
-                self.position -= timestep * self.movement_speed * right_direction;
+                self.position -= self.movement_speed * right_direction;
                 moved = true;
             }
 
             // up - down
             if input.key_down(egui::Key::Q) {
                 // holding Q
-                self.position += timestep * self.movement_speed * up_direction;
+                self.position += self.movement_speed * up_direction;
                 moved = true;
             } else if input.key_down(egui::Key::E) {
                 // holding E
-                self.position -= timestep * self.movement_speed * up_direction;
+                self.position -= self.movement_speed * up_direction;
                 moved = true;
             }
         });

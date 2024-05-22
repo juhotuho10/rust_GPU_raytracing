@@ -6,7 +6,7 @@ use super::buffers;
 
 use egui::Context;
 
-use wgpu::{BindGroup, BindGroupLayout, CommandEncoder, Device, Queue, Texture};
+use wgpu::{core::device, BindGroup, BindGroupLayout, CommandEncoder, Device, Queue, Texture};
 
 #[derive(Debug, Clone)]
 pub struct RenderScene {
@@ -80,10 +80,10 @@ impl Renderer {
         device: &Device,
         queue: &Queue,
         mouse_delta: egui::Vec2,
-        timestep: &f32,
+
         egui_context: &Context,
     ) {
-        let moved = self.camera.on_update(mouse_delta, timestep, egui_context);
+        let moved = self.camera.on_update(mouse_delta, egui_context);
 
         if moved {
             self.reset_accumulation(device, queue);
@@ -132,14 +132,17 @@ impl Renderer {
         self.buffers.update_materials(queue, new_materials);
     }
 
-    pub fn update_frame(
+    pub fn compute_frame(
         &mut self,
-        encoder: &mut CommandEncoder,
+        device: &Device,
         queue: &Queue,
         compute_pipeline: &wgpu::ComputePipeline,
         compute_bind_group: &BindGroup,
-        texture: &Texture,
     ) {
+        let mut compute_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Encoder"),
+        });
+
         // ###################################### update accumulation ########################################
         let width = self.camera.viewport_width;
         let height = self.camera.viewport_height;
@@ -161,16 +164,25 @@ impl Renderer {
         // ###################################### compute step ########################################
 
         {
-            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("Compute Pass"),
-                timestamp_writes: None,
-            });
+            let mut compute_pass =
+                compute_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some("Compute Pass"),
+                    timestamp_writes: None,
+                });
             compute_pass.set_pipeline(compute_pipeline);
             compute_pass.set_bind_group(0, compute_bind_group, &[]);
             compute_pass.dispatch_workgroups((width + 7) / 8, (height + 7) / 8, 1);
         }
 
+        queue.submit(Some(compute_encoder.finish()));
+
         // ###################################### copying buffers to texture ########################################
+    }
+
+    pub fn update_texture(&mut self, encoder: &mut CommandEncoder, texture: &Texture) {
+        // ###################################### update accumulation ########################################
+        let width = self.camera.viewport_width;
+        let height = self.camera.viewport_height;
 
         let bytes_per_row = self.calculate_bytes_per_row(width);
 
