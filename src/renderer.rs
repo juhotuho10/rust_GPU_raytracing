@@ -6,7 +6,7 @@ use super::buffers;
 
 use egui::Context;
 
-use wgpu::{core::device, BindGroup, BindGroupLayout, CommandEncoder, Device, Queue, Texture};
+use wgpu::{BindGroup, BindGroupLayout, CommandEncoder, Device, Queue, Texture};
 
 #[derive(Debug, Clone)]
 pub struct RenderScene {

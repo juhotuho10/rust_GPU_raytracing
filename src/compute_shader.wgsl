@@ -85,26 +85,30 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let bounces: u32 = 10u;
 
-
-    let f32_color: vec3<f32> = per_pixel(index, bounces);
-
     var render_color = vec3<f32>(0.0);
 
+    var random_index = params.accumulation_index;
+
+    var pixel_color = accumulation_data[index];
+
+    let renders_times = 10u;
+
     if params.accumulate == 1{
-        
-        accumulation_data[index] += f32_color;
 
-        var accumulated_color = accumulation_data[index] / f32(params.accumulation_index);
-
-        // first frame in accumulation had some strobing effect, this is here to limit that
-        if params.accumulation_index > 3{
-            render_color = clamp(accumulated_color, vec3<f32>(0.0), vec3<f32>(1.0));
-        }else{
-            render_color = clamp(f32_color, vec3<f32>(0.0), vec3<f32>(1.0));
+        for (var i: u32 = 0u; i < renders_times; i = i + 1) {
+            pixel_color += per_pixel(index, bounces, random_index);
+            random_index = random_index + 1;
         }
+        accumulation_data[index] = pixel_color;
+
+        var accumulated_color = pixel_color / f32(params.accumulation_index * renders_times);
+
+        render_color = clamp(accumulated_color, vec3<f32>(0.0), vec3<f32>(1.0));
         
 
     }else{
+
+        let f32_color: vec3<f32> = per_pixel(index, bounces, random_index);
         render_color = clamp(f32_color, vec3<f32>(0.0), vec3<f32>(1.0));
     }
     
@@ -138,14 +142,14 @@ fn pack_to_u32(vector: vec3<f32>) -> u32 {
     return (byte0 << 0) | (byte1 << 8) | (byte2 << 16) | (255u << 24);
 }
 
-fn per_pixel(index: u32, bounces: u32) -> vec3<f32> {
+fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
 
     var ray = Ray( 
         ray_camera.origin,
         camera_rays[index]
     );
 
-    var seed: u32 = index * params.accumulation_index * 326624u;
+    var seed: u32 = index * random_index * 326624u;
 
     ray.direction += random_scaler(&seed) * 0.001;
 
