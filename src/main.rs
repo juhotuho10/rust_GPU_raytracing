@@ -3,7 +3,7 @@ mod camera;
 mod renderer;
 mod stl_to_triangles;
 
-use buffers::{Params, SceneMaterial, SceneSphere, SceneTriangle};
+use buffers::{Params, SceneMaterial, SceneSphere};
 use camera::Camera;
 
 use renderer::{RenderScene, Renderer};
@@ -127,24 +127,6 @@ fn define_render_scene() -> RenderScene {
         _padding: [0; 12],
     };
 
-    //let triangle_a: SceneTriangle = SceneTriangle {
-    //    a: [6.0, -0.0, 1.],
-    //    b: [9.0, -3.0, 3.],
-    //    c: [6.0, -0.0, 5.],
-    //    material_index: 4,
-    //    _padding: [0; 4],
-    //    _padding2: [0; 4],
-    //};
-    //
-    //let triangle_b: SceneTriangle = SceneTriangle {
-    //    a: [6.0, -3.0, 1.],
-    //    b: [9.0, -6.0, 3.],
-    //    c: [6.0, -3.0, 5.],
-    //    material_index: 3,
-    //    _padding: [0; 4],
-    //    _padding2: [0; 4],
-    //};
-
     let queen_triangles = stl_triangles("./3D_models/Queen.stl");
 
     RenderScene {
@@ -197,7 +179,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         accumulation_index: 1,
         sky_color: scene.sky_color,
         accumulate: 1,
-        _padding: [0; 8],
+        sphere_count: scene.spheres.len() as u32,
+        triangle_count: scene.triangles.len() as u32,
     };
 
     let (mut scene_renderer, compute_bindgroup_layout, compute_bind_group) =

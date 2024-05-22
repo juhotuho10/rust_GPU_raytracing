@@ -6,9 +6,8 @@ struct Params {
     width: u32,
     accumulation_index: u32,
     accumulate: u32,
-    // explicit padding to match 16 byte alignment
-    _padding1: u32,
-    _padding2: u32,
+    sphere_count: u32,   
+    triangle_count: u32, 
 };
 
 
@@ -161,7 +160,6 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
     var seed: u32 = index * random_index * 326624u;
 
     ray.direction += random_scaler(&seed) * 0.001;
-
     
     var light_contribution = vec3<f32>(1.0);
     var light = vec3<f32>(0.0);
@@ -186,18 +184,8 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
 
         light_contribution *= current_material.albedo * current_material.metallic;
 
-        
+        ray.origin = hit_payload.world_position;
 
-
-        // combination of ray math that worked well with triangles and spheres, 
-        // the triangle world normal calculation somehow doesnt want to work properly
-        ray.origin = ray.origin + hit_payload.hit_distance * ray.direction + hit_payload.world_normal * 0.0001;
-
-        //ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
-
-        //ray.origin = hit_payload.world_position - ray.direction * 0.01;
-
-   
         ray.direction = normalize(hit_payload.world_normal + random_normal_scaler(&seed));
 
     }
@@ -236,7 +224,7 @@ fn check_spheres(ray: Ray) -> HitPayload{
     let a: f32 = dot(ray.direction, ray.direction);
 
     // 4 used a a TEMPORARY sphere count, count should be passed in the params buffer
-    for (var sphere_index: i32 = 0; sphere_index < 4; sphere_index = sphere_index + 1) {
+    for (var sphere_index: i32 = 0; sphere_index < i32(params.sphere_count); sphere_index = sphere_index + 1) {
         let sphere: SceneSphere = sphere_array[sphere_index];
         let origin: vec3<f32> = ray.origin - sphere.position;
 
@@ -277,7 +265,7 @@ fn check_triangles(ray: Ray) -> HitPayload{
     var closest_distance = F32_MAX;
     var closest_hitpayload: HitPayload = miss();
 
-    for (var triangle_index: i32 = 0; triangle_index < 202; triangle_index = triangle_index + 1) {
+    for (var triangle_index: i32 = 0; triangle_index < i32(params.triangle_count); triangle_index = triangle_index + 1) {
         let tri: SceneTriangle = triangle_array[triangle_index];
         
         let determinant: f32 = -dot(ray.direction, tri.calc_normal);
@@ -330,7 +318,7 @@ fn check_triangles(ray: Ray) -> HitPayload{
 
         closest_hitpayload = HitPayload(
             distance,
-            ray.origin * ray.direction * distance,
+            ray.origin + ray.direction * distance * 0.9999,
             face_normal,
             tri.material_index,
 
@@ -354,7 +342,7 @@ fn miss() -> HitPayload{
 fn sphere_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
     let closest_sphere: SceneSphere = sphere_array[object_index];
 
-    let hit_point: vec3<f32> = ray.origin + ray.direction * hit_distance;
+    let hit_point: vec3<f32> = ray.origin + ray.direction * hit_distance * 0.9999;
     let sphere_normal: vec3<f32> = normalize(hit_point - closest_sphere.position);
 
 

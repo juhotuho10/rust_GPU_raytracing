@@ -112,8 +112,8 @@ impl Renderer {
             width: self.camera.viewport_width,
             accumulation_index: self.accumulation_index,
             accumulate: self.accumulate as u32,
-
-            _padding: [0; 8],
+            sphere_count: self.scene.spheres.len() as u32,
+            triangle_count: self.scene.triangles.len() as u32,
         };
 
         self.buffers.reset_accumulation(device, queue, &[params]);
@@ -153,8 +153,8 @@ impl Renderer {
                 width: self.camera.viewport_width,
                 accumulation_index: self.accumulation_index,
                 accumulate: self.accumulate as u32,
-
-                _padding: [0; 8],
+                sphere_count: self.scene.spheres.len() as u32,
+                triangle_count: self.scene.triangles.len() as u32,
             };
 
             self.buffers.update_accumulation(queue, &[params]);

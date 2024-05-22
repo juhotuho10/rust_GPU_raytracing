@@ -1,4 +1,4 @@
-use glam::{vec3a, Vec3A};
+use glam::Vec3A;
 use wgpu::{util::DeviceExt, BindGroup, BindGroupLayout, Buffer, Device, Queue};
 
 #[repr(C)]
@@ -8,7 +8,8 @@ pub struct Params {
     pub width: u32,              // float, aligned to 4 bytes
     pub accumulation_index: u32, // u32, aligned to 4 bytes
     pub accumulate: u32,         // u32, aligned to 4 bytes
-    pub _padding: [u8; 8],       // padding to ensure 16-byte alignment
+    pub sphere_count: u32,       // u32, aligned to 4 bytes
+    pub triangle_count: u32,     // u32, aligned to 4 bytes
 }
 
 #[repr(C)]
@@ -55,6 +56,7 @@ pub struct SceneTriangle {
 
 impl SceneTriangle {
     pub fn new(material_index: u32, a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> SceneTriangle {
+        // precalculations to save on compute
         let a_vec: Vec3A = a.into();
         let b_vec: Vec3A = b.into();
         let c_vec: Vec3A = c.into();
