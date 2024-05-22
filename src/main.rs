@@ -692,14 +692,17 @@ async fn create_adapter(instance: &wgpu::Instance, surface: &Surface<'_>) -> wgp
 }
 
 async fn generate_device_and_queue(adapter: &Adapter) -> (Device, Queue) {
+    let adapter_limits = wgpu::Limits {
+        max_storage_buffers_per_shader_stage: 5,
+        ..wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits())
+    };
     adapter
         .request_device(
             &wgpu::DeviceDescriptor {
                 label: None,
                 required_features: wgpu::Features::empty(),
                 // Make sure we use the texture resolution limits from the adapter, so we can support images the size of the swapchain.
-                required_limits: wgpu::Limits::downlevel_defaults()
-                    .using_resolution(adapter.limits()),
+                required_limits: adapter_limits,
             },
             None,
         )

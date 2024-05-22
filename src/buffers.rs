@@ -1,3 +1,4 @@
+use glam::{vec3a, Vec3A};
 use wgpu::{util::DeviceExt, BindGroup, BindGroupLayout, Buffer, Device, Queue};
 
 #[repr(C)]
@@ -36,14 +37,51 @@ pub struct SceneSphere {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SceneTriangle {
-    pub a: [f32; 3],
-    pub material_index: u32, // u32, aligned to 4 bytes
-    pub b: [f32; 3],
-    pub _padding: [u8; 4], // vec3, aligned to 16 bytes
-    pub c: [f32; 3],
-    pub _padding2: [u8; 4], // padding to ensure 16-byte alignment
-    pub normal: [f32; 3],   // vec3, aligned to 12 bytes
-    pub _padding3: [u8; 4], // padding to ensure 16-byte alignment
+    a: [f32; 3],           //
+    material_index: u32,   // u32, aligned to 4 bytes
+    b: [f32; 3],           //
+    _padding: [u8; 4],     // vec3, aligned to 16 bytes
+    c: [f32; 3],           //
+    _padding2: [u8; 4],    // padding to ensure 16-byte alignment
+    edge_ab: [f32; 3],     // vec3, aligned to 12 bytes
+    _padding3: [u8; 4],    // padding to ensure 16-byte alignment
+    edge_ac: [f32; 3],     // vec3, aligned to 12 bytes
+    _padding4: [u8; 4],    // padding to ensure 16-byte alignment
+    calc_normal: [f32; 3], // vec3, aligned to 12 bytes
+    _padding5: [u8; 4],    // padding to ensure 16-byte alignment
+    face_normal: [f32; 3], // vec3, aligned to 12 bytes
+    _padding6: [u8; 4],    // padding to ensure 16-byte alignment
+}
+
+impl SceneTriangle {
+    pub fn new(material_index: u32, a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> SceneTriangle {
+        let a_vec: Vec3A = a.into();
+        let b_vec: Vec3A = b.into();
+        let c_vec: Vec3A = c.into();
+
+        let edge_ab = b_vec - a_vec;
+        let edge_ac = c_vec - a_vec;
+
+        let calc_normal = edge_ab.cross(edge_ac);
+        let face_normal = calc_normal.normalize();
+
+        SceneTriangle {
+            a,                               // vec3, aligned to 12 bytes
+            material_index,                  // u32, aligned to 4 bytes
+            b,                               // vec3, aligned to 12 bytes
+            _padding: [0; 4],                // padding to ensure 16-byte alignment
+            c,                               // vec3, aligned to 12 bytes
+            _padding2: [0; 4],               // padding to ensure 16-byte alignment
+            edge_ab: edge_ab.into(),         // vec3, aligned to 12 bytes
+            _padding3: [0; 4],               // padding to ensure 16-byte alignment
+            edge_ac: edge_ac.into(),         // vec3, aligned to 12 bytes
+            _padding4: [0; 4],               // padding to ensure 16-byte alignment
+            calc_normal: calc_normal.into(), // vec3, aligned to 12 bytes
+            _padding5: [0; 4],               // padding to ensure 16-byte alignment
+            face_normal: face_normal.into(), // vec3, aligned to 12 bytes
+            _padding6: [0; 4],               // padding to ensure 16-byte alignment
+        }
+    }
 }
 
 #[repr(C)]
@@ -152,7 +190,7 @@ impl DataBuffers {
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Triangle Buffer"),
                 contents: bytemuck::cast_slice(triangle_array),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             });
 
         let buffers = DataBuffers {
@@ -263,7 +301,7 @@ impl DataBuffers {
                     binding: triangle_bind,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },

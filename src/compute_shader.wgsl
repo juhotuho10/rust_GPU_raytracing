@@ -51,16 +51,19 @@ struct SceneTriangle {
      _padding1: u32,
     c: vec3<f32>,
     _padding2: u32,
-    normal: vec3<f32>,
+    edge_ab: vec3<f32>,
     _padding3: u32,
-    // explicit padding to match 16 byte alignment
-    // explicit padding to match 16 byte alignment
-   
-    
-    // explicit padding to match 16 byte alignment   
-   
-    
+    edge_ac: vec3<f32>,
+    _padding4: u32,
+    calc_normal: vec3<f32>,
+    _padding5: u32,
+    face_normal: vec3<f32>,
+    _padding6: u32,
+    // explicit padding to match 16 byte alignment 
 }
+
+
+
 
 struct HitPayload {
     hit_distance: f32,
@@ -83,7 +86,7 @@ struct Ray {
 @group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, 5>;
 @group(0) @binding(5) var<uniform> sphere_array: array<SceneSphere, 4>;
 @group(0) @binding(6) var<storage, read_write> accumulation_data: array<vec3<f32>>;
-@group(0) @binding(7) var<uniform> triangle_array: array<SceneTriangle, 202>;
+@group(0) @binding(7) var<storage, read> triangle_array: array<SceneTriangle, 202>;
 
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -274,52 +277,49 @@ fn check_triangles(ray: Ray) -> HitPayload{
     var closest_distance = F32_MAX;
     var closest_hitpayload: HitPayload = miss();
 
-    let a: f32 = dot(ray.direction, ray.direction);
-
     for (var triangle_index: i32 = 0; triangle_index < 202; triangle_index = triangle_index + 1) {
         let tri: SceneTriangle = triangle_array[triangle_index];
-
-        let edge_ab: vec3<f32> = tri.b - tri.a;
-        let edge_ac: vec3<f32> = tri.c - tri.a;
-
-        let normal: vec3<f32> = cross(edge_ab, edge_ac);
         
-        let ao: vec3<f32> = ray.origin - tri.a; 
-        let dao: vec3<f32> = cross(ao, ray.direction); 
-
-        let determinant: f32 = -dot(ray.direction, normal);
+        let determinant: f32 = -dot(ray.direction, tri.calc_normal);
 
         if determinant < 1.0e-6 {
             continue;
         }
 
         let inv_det: f32 = 1 / determinant;
+        
+        let ao: vec3<f32> = ray.origin - tri.a; 
 
-        // calculate distance and intersection
-
-        let distance: f32 = dot(ao, normal) * inv_det;
+        let distance: f32 = dot(ao, tri.calc_normal) * inv_det;
 
         if distance < 0.0 || distance > closest_distance {
             continue;
         }
 
-        let u: f32 = dot(edge_ac, dao) * inv_det;
+    
+        let dao: vec3<f32> = cross(ao, ray.direction); 
 
-        if u < 0.0 {
-            continue;
-        }
-        let v: f32 = -dot(edge_ab, dao) * inv_det;
+        // calculate distance and intersection
+
+        let v: f32 = -dot(tri.edge_ab, dao) * inv_det;
 
         if v < 0.0 {
             continue;
         }
+        
+        let u: f32 = dot(tri.edge_ac, dao) * inv_det;
+
+        if u < 0.0 {
+            continue;
+        }
+        
         let w: f32 = 1 - u - v;
 
         if w < 0.0 {
             continue;
         }
 
-        var face_normal: vec3<f32> = normalize(normal);
+        var face_normal: vec3<f32> = tri.face_normal;
 
         if determinant < 0.0 {
             face_normal = -face_normal;
@@ -327,7 +327,6 @@ fn check_triangles(ray: Ray) -> HitPayload{
 
 
         closest_distance = distance;
-
 
         closest_hitpayload = HitPayload(
             distance,

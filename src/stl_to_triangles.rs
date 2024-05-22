@@ -42,16 +42,12 @@ pub fn stl_triangles(filepath: &str) -> Vec<SceneTriangle> {
         .map(|tri_index| {
             let indexes = tri_index.vertices;
 
-            SceneTriangle {
-                a: points[indexes[0]],
-                b: points[indexes[1]],
-                c: points[indexes[2]],
-                material_index: 4,
-                normal: tri_index.normal.into(),
-                _padding: [0; 4],
-                _padding2: [0; 4],
-                _padding3: [0; 4],
-            }
+            SceneTriangle::new(
+                4,
+                points[indexes[0]],
+                points[indexes[1]],
+                points[indexes[2]],
+            )
         })
         .collect();
 
