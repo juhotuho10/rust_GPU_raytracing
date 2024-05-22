@@ -171,6 +171,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let mut show_ui = true;
 
+    let mut compute_counter: u32 = 0;
+    let mut compute_per_second: u32 = 0;
+
     let camera = Camera::new(size.width, size.height);
 
     let scene = define_render_scene();
@@ -274,6 +277,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut fps_timer = Instant::now();
 
     let mut compute_timer = Instant::now();
+
+    let mut compute_per_second_timer = Instant::now();
 
     /* ##############################################3################################# */
 
@@ -402,6 +407,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             if compute_timer.elapsed().as_micros() as f32 / 1000.0 > compute_target
                             {
                                 compute_timer = Instant::now();
+                                compute_counter += 2;
                                 scene_renderer.compute_frame(
                                     &device,
                                     &queue,
@@ -455,8 +461,19 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                     &bind_group,
                                 );
 
-                                let full_output =
-                                    create_ui(&device, &queue, &mut platform, &mut scene_renderer);
+                                if compute_per_second_timer.elapsed().as_millis() > 1000 {
+                                    compute_per_second_timer = Instant::now();
+                                    compute_per_second = compute_counter;
+                                    compute_counter = 0;
+                                }
+
+                                let full_output = create_ui(
+                                    &device,
+                                    &queue,
+                                    &mut platform,
+                                    &mut scene_renderer,
+                                    &compute_per_second,
+                                );
 
                                 let paint_jobs = platform
                                     .context()
@@ -720,6 +737,7 @@ fn create_ui(
     queue: &Queue,
     platform: &mut Platform,
     screne_renderer: &mut Renderer,
+    compute_per_second: &u32,
 ) -> FullOutput {
     platform.begin_frame();
 
@@ -739,6 +757,8 @@ fn create_ui(
         .frame(transparent_frame)
         .show(&egui_context, |ui| {
             ui.set_max_width(100.0);
+
+            ui.label(format!("fps: {}", compute_per_second));
 
             ui.vertical_centered(|ui| {
                 if ui
