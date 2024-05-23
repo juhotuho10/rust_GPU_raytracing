@@ -21,12 +21,12 @@ struct RayCamera {
 struct SceneMaterial {
     albedo: vec3<f32>,         
     roughness: f32,
-    emission_color: vec3<f32>,            
+    emission_color: vec3<f32>,
+    emission_power: f32,            
     metallic: f32,            
-    emission_power: f32,
+    specular_scatter: f32,
     reflectivity: f32,
     // explicit padding to match 16 byte alignment
-    _padding1: u32,
     _padding2: u32,
            
 }
@@ -192,7 +192,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
         let is_specular_bounce: bool = current_material.metallic > random(&seed);
 
         if is_specular_bounce{
-            ray.direction = lerp(specular_direction, diffuse_direction, current_material.roughness * 0.05);
+            ray.direction = lerp(specular_direction, diffuse_direction, current_material.specular_scatter);
             light_contribution *= current_material.reflectivity;
 
         }else{

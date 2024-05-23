@@ -53,50 +53,55 @@ fn define_render_scene() -> RenderScene {
         albedo: [0.1, 0.8, 0.4],
         roughness: 0.3,
         emission_color: [0.1, 0.8, 0.4],
-        metallic: 1.0,
         emission_power: 0.0,
+        metallic: 1.0,
+        specular_scatter: 0.0,
         reflectivity: 1.0,
-        _padding: [0; 8],
+        _padding: [0; 4],
     };
 
     let rough_blue = SceneMaterial {
         albedo: [0.3, 0.2, 0.8],
-        roughness: 0.7,
+        roughness: 0.9,
         emission_color: [0.3, 0.2, 0.8],
-        metallic: 0.5,
         emission_power: 0.0,
+        metallic: 0.2,
+        specular_scatter: 1.0,
         reflectivity: 0.5,
-        _padding: [0; 8],
+        _padding: [0; 4],
     };
 
     let glossy_pink = SceneMaterial {
         albedo: [1.0, 0.1, 1.0],
         roughness: 0.4,
         emission_color: [1.0, 0.1, 1.0],
-        metallic: 0.8,
         emission_power: 0.0,
+        metallic: 0.8,
+        specular_scatter: 0.1,
         reflectivity: 0.8,
-        _padding: [0; 8],
+        _padding: [0; 4],
     };
 
     let shiny_orange = SceneMaterial {
         albedo: [1.0, 0.7, 0.0],
         roughness: 0.7,
         emission_color: [1.0, 0.7, 0.0],
-        metallic: 0.7,
         emission_power: 10.0,
+        metallic: 0.7,
+        specular_scatter: 0.1,
         reflectivity: 0.7,
-        _padding: [0; 8],
+        _padding: [0; 4],
     };
 
     let cool_red = SceneMaterial {
         albedo: [1.0, 0.0, 0.2],
         roughness: 0.3,
         emission_color: [1.0, 0.0, 0.2],
-        metallic: 0.9,
         emission_power: 0.0,
+        metallic: 0.9,
+        specular_scatter: 0.0,
         reflectivity: 0.9,
-        _padding: [0; 8],
+        _padding: [0; 4],
     };
 
     let sphere_a: SceneSphere = SceneSphere {
@@ -803,7 +808,7 @@ fn create_ui(
                             DragValue::new(emission_power)
                                 .speed(0.2)
                                 .clamp_range(0.0..=200.0)
-                                .prefix("emission power: "),
+                                .prefix("emission power:"),
                         )
                         .changed()
                     {
@@ -817,7 +822,7 @@ fn create_ui(
                             DragValue::new(material_roughness)
                                 .speed(0.01)
                                 .clamp_range(0.0..=1.0)
-                                .prefix("roughness: "),
+                                .prefix("roughness:"),
                         )
                         .changed()
                     {
@@ -831,7 +836,7 @@ fn create_ui(
                             DragValue::new(material_metallic)
                                 .speed(0.01)
                                 .clamp_range(0.0..=1.0)
-                                .prefix("metallic: "),
+                                .prefix("metallic:"),
                         )
                         .changed()
                     {
@@ -845,7 +850,21 @@ fn create_ui(
                             DragValue::new(material_reflectivity)
                                 .speed(0.01)
                                 .clamp_range(0.0..=1.0)
-                                .prefix("reflectivity: "),
+                                .prefix("reflectivity:"),
+                        )
+                        .changed()
+                    {
+                        interacted = true;
+                    };
+
+                    let specular_scatter = &mut current_material.specular_scatter;
+
+                    if ui
+                        .add(
+                            DragValue::new(specular_scatter)
+                                .speed(0.01)
+                                .clamp_range(0.0..=0.5)
+                                .prefix("specular scatter:"),
                         )
                         .changed()
                     {
