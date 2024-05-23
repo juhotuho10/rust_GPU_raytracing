@@ -55,7 +55,8 @@ fn define_render_scene() -> RenderScene {
         emission_color: [0.1, 0.8, 0.4],
         metallic: 1.0,
         emission_power: 0.0,
-        _padding: [0; 12],
+        reflectivity: 1.0,
+        _padding: [0; 8],
     };
 
     let rough_blue = SceneMaterial {
@@ -64,7 +65,8 @@ fn define_render_scene() -> RenderScene {
         emission_color: [0.3, 0.2, 0.8],
         metallic: 0.5,
         emission_power: 0.0,
-        _padding: [0; 12],
+        reflectivity: 0.5,
+        _padding: [0; 8],
     };
 
     let glossy_pink = SceneMaterial {
@@ -73,7 +75,8 @@ fn define_render_scene() -> RenderScene {
         emission_color: [1.0, 0.1, 1.0],
         metallic: 0.8,
         emission_power: 0.0,
-        _padding: [0; 12],
+        reflectivity: 0.8,
+        _padding: [0; 8],
     };
 
     let shiny_orange = SceneMaterial {
@@ -82,7 +85,8 @@ fn define_render_scene() -> RenderScene {
         emission_color: [1.0, 0.7, 0.0],
         metallic: 0.7,
         emission_power: 10.0,
-        _padding: [0; 12],
+        reflectivity: 0.7,
+        _padding: [0; 8],
     };
 
     let cool_red = SceneMaterial {
@@ -91,7 +95,8 @@ fn define_render_scene() -> RenderScene {
         emission_color: [1.0, 0.0, 0.2],
         metallic: 0.9,
         emission_power: 0.0,
-        _padding: [0; 12],
+        reflectivity: 0.9,
+        _padding: [0; 8],
     };
 
     let sphere_a: SceneSphere = SceneSphere {
@@ -827,6 +832,20 @@ fn create_ui(
                                 .speed(0.01)
                                 .clamp_range(0.0..=1.0)
                                 .prefix("metallic: "),
+                        )
+                        .changed()
+                    {
+                        interacted = true;
+                    };
+
+                    let material_reflectivity = &mut current_material.reflectivity;
+
+                    if ui
+                        .add(
+                            DragValue::new(material_reflectivity)
+                                .speed(0.01)
+                                .clamp_range(0.0..=1.0)
+                                .prefix("reflectivity: "),
                         )
                         .changed()
                     {

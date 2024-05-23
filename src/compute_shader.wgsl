@@ -23,13 +23,12 @@ struct SceneMaterial {
     roughness: f32,
     emission_color: vec3<f32>,            
     metallic: f32,            
-    
-    emission_power: f32,      
-    
+    emission_power: f32,
+    reflectivity: f32,
     // explicit padding to match 16 byte alignment
     _padding1: u32,
     _padding2: u32,
-    _padding3: u32,             
+           
 }
 
 struct SceneSphere {
@@ -180,19 +179,35 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
         let material_index: u32 = hit_payload.material_index;
         let current_material: SceneMaterial = material_array[material_index];
 
-        let emitted_light = current_material.emission_color * current_material.emission_power;
-        light += emitted_light * light_contribution;
-
-        light_contribution *= current_material.albedo * current_material.metallic;
-
-        ray.origin = hit_payload.world_position;
+        
 
         let diffuse_direction = normalize(hit_payload.world_normal + random_normal_scaler(&seed));
         let specular_direction = reflect(ray.direction, hit_payload.world_normal);
-        ray.direction = specular_direction + (diffuse_direction - specular_direction) * current_material.roughness;
+
+
+        let emitted_light = current_material.emission_color * current_material.emission_power;
+        light += emitted_light * light_contribution;
+        
+
+        let is_specular_bounce: bool = current_material.metallic > random(&seed);
+
+        if is_specular_bounce{
+            ray.direction = lerp(specular_direction, diffuse_direction, current_material.roughness * 0.05);
+            light_contribution *= current_material.reflectivity;
+
+        }else{
+            ray.direction = lerp(specular_direction, diffuse_direction, current_material.roughness);
+            light_contribution *= current_material.albedo * current_material.reflectivity;
+        }
+
+        ray.origin = hit_payload.world_position;
 
     }
     return light;
+}
+
+fn lerp(start: vec3<f32>, end: vec3<f32>, t: f32) -> vec3<f32>{
+    return start + (end - start) * t;
 }
 
 
@@ -378,8 +393,9 @@ fn sphere_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
 }
 
 
-fn pcg_hash(seed: ptr<function, u32>) -> f32 {
-    // random float between 0 and 1
+fn random(seed: ptr<function, u32>) -> f32 {
+
+    // random float between 0 and 1 using pcg hash
     var state: u32 = *seed * 747796405u + 2891336453u;
 
     var word: u32 = (state >> ((state >> 28u) + 4u)) ^ state;
@@ -405,17 +421,17 @@ fn random_normal_scaler(seed: ptr<function, u32>) -> vec3<f32>{
 fn random_scaler(seed: ptr<function, u32>) -> vec3<f32>{
     // random vec3 scaler from -1 to 1
     var scaler = vec3<f32>(0.0);
-    scaler.x = pcg_hash(seed);
-    scaler.y = pcg_hash(seed);
-    scaler.z = pcg_hash(seed);
+    scaler.x = random(seed);
+    scaler.y = random(seed);
+    scaler.z = random(seed);
 
     return scaler * 2.0 - 1.0;
 }
 
 fn normal_distribution(seed: ptr<function, u32>) -> f32{
     // returns normally distributed float
-    let theta: f32 = 2.0 * 3.1415926 * pcg_hash(seed);
-    let rho: f32 = sqrt(-2.0 * log(pcg_hash(seed)));
+    let theta: f32 = 2.0 * 3.1415926 * random(seed);
+    let rho: f32 = sqrt(-2.0 * log(random(seed)));
     return rho * cos(theta);
 
 }
