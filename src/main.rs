@@ -3,7 +3,7 @@ mod camera;
 mod renderer;
 mod stl_to_triangles;
 
-use buffers::{Params, SceneMaterial, SceneSphere};
+use buffers::{ObjectInfo, Params, SceneMaterial, SceneSphere};
 use camera::Camera;
 
 use renderer::{RenderScene, Renderer};
@@ -127,12 +127,13 @@ fn define_render_scene() -> RenderScene {
         _padding: [0; 12],
     };
 
-    let queen_triangles = stl_triangles("./3D_models/Queen.stl");
+    let (queen_object, queen_triangles) = stl_triangles("./3D_models/Queen.stl");
 
     RenderScene {
         materials: vec![shiny_green, rough_blue, glossy_pink, shiny_orange, cool_red],
         spheres: vec![sphere_a, sphere_b, shiny_sphere, floor],
         triangles: queen_triangles,
+        objects: vec![queen_object],
         sky_color: [0., 0.04, 0.1],
     }
 }

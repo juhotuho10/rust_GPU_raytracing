@@ -40,18 +40,14 @@ pub struct SceneSphere {
 pub struct SceneTriangle {
     a: [f32; 3],           //
     material_index: u32,   // u32, aligned to 4 bytes
-    b: [f32; 3],           //
-    _padding: [u8; 4],     // vec3, aligned to 16 bytes
-    c: [f32; 3],           //
-    _padding2: [u8; 4],    // padding to ensure 16-byte alignment
     edge_ab: [f32; 3],     // vec3, aligned to 12 bytes
-    _padding3: [u8; 4],    // padding to ensure 16-byte alignment
+    _padding: [u8; 4],     // padding to ensure 16-byte alignment
     edge_ac: [f32; 3],     // vec3, aligned to 12 bytes
-    _padding4: [u8; 4],    // padding to ensure 16-byte alignment
+    _padding2: [u8; 4],    // padding to ensure 16-byte alignment
     calc_normal: [f32; 3], // vec3, aligned to 12 bytes
-    _padding5: [u8; 4],    // padding to ensure 16-byte alignment
+    _padding3: [u8; 4],    // padding to ensure 16-byte alignment
     face_normal: [f32; 3], // vec3, aligned to 12 bytes
-    _padding6: [u8; 4],    // padding to ensure 16-byte alignment
+    _padding4: [u8; 4],    // padding to ensure 16-byte alignment
 }
 
 impl SceneTriangle {
@@ -70,18 +66,14 @@ impl SceneTriangle {
         SceneTriangle {
             a,                               // vec3, aligned to 12 bytes
             material_index,                  // u32, aligned to 4 bytes
-            b,                               // vec3, aligned to 12 bytes
-            _padding: [0; 4],                // padding to ensure 16-byte alignment
-            c,                               // vec3, aligned to 12 bytes
-            _padding2: [0; 4],               // padding to ensure 16-byte alignment
             edge_ab: edge_ab.into(),         // vec3, aligned to 12 bytes
-            _padding3: [0; 4],               // padding to ensure 16-byte alignment
+            _padding: [0; 4],                // padding to ensure 16-byte alignment
             edge_ac: edge_ac.into(),         // vec3, aligned to 12 bytes
-            _padding4: [0; 4],               // padding to ensure 16-byte alignment
+            _padding2: [0; 4],               // padding to ensure 16-byte alignment
             calc_normal: calc_normal.into(), // vec3, aligned to 12 bytes
-            _padding5: [0; 4],               // padding to ensure 16-byte alignment
+            _padding3: [0; 4],               // padding to ensure 16-byte alignment
             face_normal: face_normal.into(), // vec3, aligned to 12 bytes
-            _padding6: [0; 4],               // padding to ensure 16-byte alignment
+            _padding4: [0; 4],               // padding to ensure 16-byte alignment
         }
     }
 }
@@ -97,20 +89,30 @@ pub struct SceneMaterial {
     pub _padding: [u8; 12],       // padding to ensure 16-byte alignment
 }
 
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ObjectInfo {
+    pub min_bounds: [f32; 3],      // vec3, aligned to 12 bytes
+    pub first_triangle_index: u32, // f32, aligned to 4 bytes
+    pub max_bounds: [f32; 3],      // vec3, aligned to 12 bytes
+    pub triangle_count: u32,       // f32, aligned to 4 bytes
+}
+
 pub struct DataBuffers {
     pub output_buffer_size: u64,
     pub accumulation_buffer_size: u64,
     pub ray_buffer: Buffer,
     pub output_buffer: Buffer,
     pub params_buffer: Buffer,
-    pub staging_buffer: Buffer,
     pub camera_buffer: Buffer,
     pub material_buffer: Buffer,
     pub sphere_buffer: Buffer,
     pub accumulation_buffer: Buffer,
     pub triangle_buffer: Buffer,
+    pub object_buffer: Buffer,
 }
 
+#[allow(clippy::too_many_arguments)]
 impl DataBuffers {
     pub fn new(
         device: &wgpu::Device,
@@ -119,6 +121,7 @@ impl DataBuffers {
         material_array: &[SceneMaterial],
         sphere_array: &[SceneSphere],
         triangle_array: &[SceneTriangle],
+        object_array: &[ObjectInfo],
         params: &[Params],
     ) -> (DataBuffers, BindGroupLayout, BindGroup) {
         let ray_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -142,14 +145,6 @@ impl DataBuffers {
             label: Some("Params Buffer"),
             contents: bytemuck::cast_slice(params),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-        });
-
-        // Create staging buffer for reading back data
-        let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Staging Buffer"),
-            size: output_buffer_size,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
         });
 
         // Create uniform buffer
@@ -195,18 +190,24 @@ impl DataBuffers {
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             });
 
+        let object_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Object Buffer"),
+            contents: bytemuck::cast_slice(object_array),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
         let buffers = DataBuffers {
             output_buffer_size,
             accumulation_buffer_size,
             ray_buffer,
             output_buffer,
             params_buffer,
-            staging_buffer,
             camera_buffer,
             material_buffer,
             sphere_buffer,
             accumulation_buffer,
             triangle_buffer,
+            object_buffer,
         };
 
         let (bind_group_layout, compute_bind_group) = buffers.create_compute_bindgroup(device);
@@ -226,6 +227,7 @@ impl DataBuffers {
         let sphere_bind = 5;
         let accumulation_bind = 6;
         let triangle_bind = 7;
+        let object_bind = 8;
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -309,6 +311,16 @@ impl DataBuffers {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: object_bind,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
             label: None,
         });
@@ -347,6 +359,10 @@ impl DataBuffers {
                 wgpu::BindGroupEntry {
                     binding: triangle_bind,
                     resource: self.triangle_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: object_bind,
+                    resource: self.object_buffer.as_entire_binding(),
                 },
             ],
             label: None,

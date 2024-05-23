@@ -1,4 +1,4 @@
-use crate::buffers::{Params, RayCamera, SceneMaterial, SceneSphere, SceneTriangle};
+use crate::buffers::{ObjectInfo, Params, RayCamera, SceneMaterial, SceneSphere, SceneTriangle};
 
 use super::camera::Camera;
 
@@ -13,6 +13,7 @@ pub struct RenderScene {
     pub spheres: Vec<SceneSphere>,
     pub triangles: Vec<SceneTriangle>,
     pub materials: Vec<SceneMaterial>,
+    pub objects: Vec<ObjectInfo>,
     pub sky_color: [f32; 3],
 }
 
@@ -44,13 +45,13 @@ impl Renderer {
             &scene.materials,
             &scene.spheres,
             &scene.triangles,
+            &scene.objects,
             &[params],
         );
 
         let renderer = Renderer {
             camera,
             scene,
-
             accumulate,
             light_mode: 0,
             accumulation_index: 1,
