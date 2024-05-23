@@ -70,7 +70,7 @@ pub fn stl_triangles(
     // Read the STL file
     let stl_file = stl_io::read_stl(&mut reader).expect("Failed to read STL file");
 
-    // into vector of arrays
+    // into vector of vec3a
     let original_points: Vec<Vec3A> = stl_file
         .vertices
         .iter()

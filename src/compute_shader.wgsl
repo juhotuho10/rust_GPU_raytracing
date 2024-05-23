@@ -21,13 +21,11 @@ struct RayCamera {
 struct SceneMaterial {
     albedo: vec3<f32>,         
     roughness: f32,
-    emission_color: vec3<f32>,
     emission_power: f32,            
     metallic: f32,            
     specular_scatter: f32,
-    reflectivity: f32,
     // explicit padding to match 16 byte alignment
-    _padding2: u32,
+    _padding1: u32,
            
 }
 
@@ -35,7 +33,6 @@ struct SceneSphere {
     position: vec3<f32>,  
     radius: f32,         
     material_index: u32, 
-
      // explicit padding to match 16 byte alignment
     _padding1: u32,
     _padding2: u32,
@@ -185,7 +182,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
         let specular_direction = reflect(ray.direction, hit_payload.world_normal);
 
 
-        let emitted_light = current_material.emission_color * current_material.emission_power;
+        let emitted_light = current_material.albedo * current_material.emission_power;
         light += emitted_light * light_contribution;
         
 
@@ -193,11 +190,9 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
 
         if is_specular_bounce{
             ray.direction = lerp(specular_direction, diffuse_direction, current_material.specular_scatter);
-            light_contribution *= current_material.reflectivity;
-
         }else{
             ray.direction = lerp(specular_direction, diffuse_direction, current_material.roughness);
-            light_contribution *= current_material.albedo * current_material.reflectivity;
+            light_contribution *= current_material.albedo;
         }
 
         ray.origin = hit_payload.world_position;

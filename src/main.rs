@@ -52,63 +52,52 @@ pub fn main() {
 fn define_render_scene() -> RenderScene {
     let shiny_green = SceneMaterial {
         albedo: [0.1, 0.8, 0.4],
-        roughness: 0.3,
-        emission_color: [0.1, 0.8, 0.4],
+        roughness: 0.4,
         emission_power: 0.0,
-        metallic: 1.0,
+        metallic: 0.6,
         specular_scatter: 0.0,
-        reflectivity: 1.0,
         _padding: [0; 4],
     };
 
     let rough_blue = SceneMaterial {
         albedo: [0.3, 0.2, 0.8],
         roughness: 0.9,
-        emission_color: [0.3, 0.2, 0.8],
         emission_power: 0.0,
-        metallic: 0.2,
+        metallic: 0.1,
         specular_scatter: 1.0,
-        reflectivity: 0.5,
         _padding: [0; 4],
     };
 
     let glossy_pink = SceneMaterial {
         albedo: [1.0, 0.1, 1.0],
-        roughness: 0.4,
-        emission_color: [1.0, 0.1, 1.0],
+        roughness: 0.7,
         emission_power: 0.0,
-        metallic: 0.8,
+        metallic: 0.5,
         specular_scatter: 0.1,
-        reflectivity: 0.8,
         _padding: [0; 4],
     };
 
     let shiny_orange = SceneMaterial {
         albedo: [1.0, 0.7, 0.0],
-        roughness: 0.7,
-        emission_color: [1.0, 0.7, 0.0],
+        roughness: 0.3,
         emission_power: 10.0,
-        metallic: 0.7,
+        metallic: 0.3,
         specular_scatter: 0.1,
-        reflectivity: 0.7,
         _padding: [0; 4],
     };
 
     let cool_red = SceneMaterial {
-        albedo: [1.0, 0.0, 0.2],
-        roughness: 0.3,
-        emission_color: [1.0, 0.0, 0.2],
+        albedo: [1.0, 0.0, 0.4],
+        roughness: 0.9,
         emission_power: 0.0,
-        metallic: 0.9,
+        metallic: 0.3,
         specular_scatter: 0.0,
-        reflectivity: 0.9,
         _padding: [0; 4],
     };
 
     let sphere_a: SceneSphere = SceneSphere {
-        position: [0., -0.5, 0.],
+        position: [1., -0.5, -2.],
         radius: 0.5,
-
         material_index: 2,
         _padding: [0; 12],
     };
@@ -116,7 +105,6 @@ fn define_render_scene() -> RenderScene {
     let sphere_b: SceneSphere = SceneSphere {
         position: [-3., -2.0, 3.],
         radius: 2.0,
-
         material_index: 0,
         _padding: [0; 12],
     };
@@ -124,7 +112,6 @@ fn define_render_scene() -> RenderScene {
     let shiny_sphere: SceneSphere = SceneSphere {
         position: [3., -15.0, -5.],
         radius: 7.0,
-
         material_index: 3,
         _padding: [0; 12],
     };
@@ -133,13 +120,12 @@ fn define_render_scene() -> RenderScene {
     let floor: SceneSphere = SceneSphere {
         position: [0., 500., 0.],
         radius: 500.,
-
         material_index: 1,
         _padding: [0; 12],
     };
 
     let (queen_object, queen_triangles) =
-        stl_triangles("./3D_models/Queen.stl", 10.0, vec3a(0.0, 0.0, 0.0));
+        stl_triangles("./3D_models/Queen.stl", 1.0, vec3a(0.0, 0.0, 0.0));
 
     RenderScene {
         materials: vec![shiny_green, rough_blue, glossy_pink, shiny_orange, cool_red],
@@ -783,22 +769,12 @@ fn create_ui(
 
                     let color = &mut current_material.albedo;
 
-                    let emission_color = &mut current_material.emission_color;
-
                     let emission_power = &mut current_material.emission_power;
 
                     ui.horizontal(|ui| {
                         if ui
                             .color_edit_button_rgb(color)
                             .on_hover_text("color")
-                            .changed()
-                        {
-                            interacted = true;
-                        };
-
-                        if ui
-                            .color_edit_button_rgb(emission_color)
-                            .on_hover_text("emission")
                             .changed()
                         {
                             interacted = true;
@@ -839,20 +815,6 @@ fn create_ui(
                                 .speed(0.01)
                                 .clamp_range(0.0..=1.0)
                                 .prefix("metallic:"),
-                        )
-                        .changed()
-                    {
-                        interacted = true;
-                    };
-
-                    let material_reflectivity = &mut current_material.reflectivity;
-
-                    if ui
-                        .add(
-                            DragValue::new(material_reflectivity)
-                                .speed(0.01)
-                                .clamp_range(0.0..=1.0)
-                                .prefix("reflectivity:"),
                         )
                         .changed()
                     {
