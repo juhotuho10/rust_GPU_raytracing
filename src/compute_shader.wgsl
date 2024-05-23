@@ -100,7 +100,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     var pixel_color = accumulation_data[index];
 
-    let renders_times = 2u;
+    let renders_times = 5u;
 
     if params.accumulate == 1{
 
@@ -160,7 +160,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
 
     var seed: u32 = index * random_index * 326624u;
 
-    ray.direction += random_scaler(&seed) * 0.001;
+    ray.direction += random_scaler(&seed) * 0.0005;
     
     var light_contribution = vec3<f32>(1.0);
     var light = vec3<f32>(0.0);
@@ -187,13 +187,12 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
 
         ray.origin = hit_payload.world_position;
 
-        ray.direction = normalize(hit_payload.world_normal + random_normal_scaler(&seed));
+        let diffuse_direction = normalize(hit_payload.world_normal + random_normal_scaler(&seed));
+        let specular_direction = reflect(ray.direction, hit_payload.world_normal);
+        ray.direction = specular_direction + (diffuse_direction - specular_direction) * current_material.roughness;
 
     }
-
-    
     return light;
-
 }
 
 

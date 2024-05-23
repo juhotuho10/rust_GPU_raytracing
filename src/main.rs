@@ -3,7 +3,7 @@ mod camera;
 mod renderer;
 mod stl_to_triangles;
 
-use buffers::{ObjectInfo, Params, SceneMaterial, SceneSphere};
+use buffers::{Params, SceneMaterial, SceneSphere};
 use camera::Camera;
 
 use renderer::{RenderScene, Renderer};
@@ -391,7 +391,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             if compute_timer.elapsed().as_micros() as f32 / 1000.0 > compute_target
                             {
                                 compute_timer = Instant::now();
-                                compute_counter += 2;
+                                compute_counter += 5;
                                 scene_renderer.compute_frame(
                                     &device,
                                     &queue,
