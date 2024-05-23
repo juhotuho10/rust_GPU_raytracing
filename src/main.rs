@@ -6,6 +6,7 @@ mod stl_to_triangles;
 use buffers::{Params, SceneMaterial, SceneSphere};
 use camera::Camera;
 
+use glam::vec3a;
 use renderer::{RenderScene, Renderer};
 
 use stl_to_triangles::stl_triangles;
@@ -137,7 +138,8 @@ fn define_render_scene() -> RenderScene {
         _padding: [0; 12],
     };
 
-    let (queen_object, queen_triangles) = stl_triangles("./3D_models/Queen.stl");
+    let (queen_object, queen_triangles) =
+        stl_triangles("./3D_models/Queen.stl", 10.0, vec3a(0.0, 0.0, 0.0));
 
     RenderScene {
         materials: vec![shiny_green, rough_blue, glossy_pink, shiny_orange, cool_red],
