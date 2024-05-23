@@ -1,4 +1,4 @@
-use glam::Vec3A;
+use glam::{Mat3A, Vec3A};
 use wgpu::{util::DeviceExt, BindGroup, BindGroupLayout, Buffer, Device, Queue};
 
 #[repr(C)]
@@ -84,7 +84,7 @@ pub struct SceneMaterial {
     pub albedo: [f32; 3],      // vec3, aligned to 12 bytes
     pub roughness: f32,        // f32, aligned to 4 bytes
     pub emission_power: f32,   // f32, aligned to 4 bytes
-    pub metallic: f32,         // f32, aligned to 4 bytes
+    pub specular: f32,         // f32, aligned to 4 bytes
     pub specular_scatter: f32, // f32, aligned to 4 bytes
     pub _padding: [u8; 4],     // padding to ensure 16-byte alignment
 }

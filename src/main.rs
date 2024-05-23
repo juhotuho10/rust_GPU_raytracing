@@ -9,7 +9,7 @@ use camera::Camera;
 use glam::vec3a;
 use renderer::{RenderScene, Renderer};
 
-use stl_to_triangles::stl_triangles;
+use stl_to_triangles::SceneObject;
 
 use egui::{pos2, Color32, DragValue, Frame, FullOutput};
 
@@ -54,7 +54,7 @@ fn define_render_scene() -> RenderScene {
         albedo: [0.1, 0.8, 0.4],
         roughness: 0.4,
         emission_power: 0.0,
-        metallic: 0.6,
+        specular: 0.6,
         specular_scatter: 0.0,
         _padding: [0; 4],
     };
@@ -63,7 +63,7 @@ fn define_render_scene() -> RenderScene {
         albedo: [0.3, 0.2, 0.8],
         roughness: 0.9,
         emission_power: 0.0,
-        metallic: 0.1,
+        specular: 0.1,
         specular_scatter: 1.0,
         _padding: [0; 4],
     };
@@ -72,7 +72,7 @@ fn define_render_scene() -> RenderScene {
         albedo: [1.0, 0.1, 1.0],
         roughness: 0.7,
         emission_power: 0.0,
-        metallic: 0.5,
+        specular: 0.5,
         specular_scatter: 0.1,
         _padding: [0; 4],
     };
@@ -81,7 +81,7 @@ fn define_render_scene() -> RenderScene {
         albedo: [1.0, 0.7, 0.0],
         roughness: 0.3,
         emission_power: 10.0,
-        metallic: 0.3,
+        specular: 0.3,
         specular_scatter: 0.1,
         _padding: [0; 4],
     };
@@ -90,7 +90,7 @@ fn define_render_scene() -> RenderScene {
         albedo: [1.0, 0.0, 0.4],
         roughness: 0.9,
         emission_power: 0.0,
-        metallic: 0.3,
+        specular: 0.3,
         specular_scatter: 0.0,
         _padding: [0; 4],
     };
@@ -124,13 +124,11 @@ fn define_render_scene() -> RenderScene {
         _padding: [0; 12],
     };
 
-    let (queen_object, queen_triangles) =
-        stl_triangles("./3D_models/Queen.stl", 1.0, vec3a(0.0, 0.0, 0.0));
+    let queen_object = SceneObject::new("./3D_models/Queen.stl", 10.0, vec3a(0.0, 0.0, 0.0));
 
     RenderScene {
         materials: vec![shiny_green, rough_blue, glossy_pink, shiny_orange, cool_red],
         spheres: vec![sphere_a, sphere_b, shiny_sphere, floor],
-        triangles: queen_triangles,
         objects: vec![queen_object],
         sky_color: [0., 0.04, 0.1],
     }
@@ -172,6 +170,12 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     // Create the logical device and command queue
     let (device, queue) = generate_device_and_queue(&adapter).await;
 
+    let triangle_count = scene
+        .objects
+        .iter()
+        .map(|obj: &SceneObject| obj.object_triangles.len())
+        .sum::<usize>() as u32;
+
     // Create uniform buffer
     let params = Params {
         width: size.width,
@@ -179,7 +183,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         sky_color: scene.sky_color,
         accumulate: 1,
         sphere_count: scene.spheres.len() as u32,
-        triangle_count: scene.triangles.len() as u32,
+        triangle_count: triangle_count as u32,
     };
 
     let (mut scene_renderer, compute_bindgroup_layout, compute_bind_group) =
@@ -807,14 +811,14 @@ fn create_ui(
                         interacted = true;
                     };
 
-                    let material_metallic = &mut current_material.metallic;
+                    let material_specular = &mut current_material.specular;
 
                     if ui
                         .add(
-                            DragValue::new(material_metallic)
+                            DragValue::new(material_specular)
                                 .speed(0.01)
                                 .clamp_range(0.0..=1.0)
-                                .prefix("metallic:"),
+                                .prefix("specular:"),
                         )
                         .changed()
                     {

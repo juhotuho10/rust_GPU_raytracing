@@ -1,4 +1,6 @@
-use crate::buffers::{ObjectInfo, Params, RayCamera, SceneMaterial, SceneSphere, SceneTriangle};
+use crate::buffers::{ObjectInfo, Params, RayCamera, SceneMaterial, SceneSphere};
+
+use crate::stl_to_triangles::SceneObject;
 
 use super::camera::Camera;
 
@@ -11,9 +13,8 @@ use wgpu::{BindGroup, BindGroupLayout, CommandEncoder, Device, Queue, Texture};
 #[derive(Debug, Clone)]
 pub struct RenderScene {
     pub spheres: Vec<SceneSphere>,
-    pub triangles: Vec<SceneTriangle>,
     pub materials: Vec<SceneMaterial>,
-    pub objects: Vec<ObjectInfo>,
+    pub objects: Vec<SceneObject>,
     pub sky_color: [f32; 3],
 }
 
@@ -35,8 +36,15 @@ impl Renderer {
         params: Params,
     ) -> (Renderer, BindGroupLayout, BindGroup) {
         let camera_rays = camera.recalculate_ray_directions();
-
         let accumulate = params.accumulate == 1;
+
+        let mut triangles = vec![];
+        let mut object_info_vec: Vec<ObjectInfo> = vec![];
+
+        for object in &scene.objects {
+            triangles.extend(object.object_triangles.clone());
+            object_info_vec.push(object.object_info);
+        }
 
         let (buffers, bind_group_layout, compute_bind_group) = buffers::DataBuffers::new(
             device,
@@ -44,8 +52,8 @@ impl Renderer {
             &camera_rays,
             &scene.materials,
             &scene.spheres,
-            &scene.triangles,
-            &scene.objects,
+            &triangles,
+            &object_info_vec,
             &[params],
         );
 
@@ -110,7 +118,7 @@ impl Renderer {
             accumulation_index: self.accumulation_index,
             accumulate: self.accumulate as u32,
             sphere_count: self.scene.spheres.len() as u32,
-            triangle_count: self.scene.triangles.len() as u32,
+            triangle_count: self.get_triangle_count(),
         };
 
         self.buffers.reset_accumulation(device, queue, &[params]);
@@ -122,7 +130,7 @@ impl Renderer {
         let new_spheres = &self.scene.spheres;
         self.buffers.update_spheres(queue, new_spheres);
 
-        let new_triangles = &self.scene.triangles;
+        let new_triangles = &self.scene.objects[0].object_triangles;
         self.buffers.update_triangles(queue, new_triangles);
 
         let new_materials = &self.scene.materials;
@@ -151,7 +159,7 @@ impl Renderer {
                 accumulation_index: self.accumulation_index,
                 accumulate: self.accumulate as u32,
                 sphere_count: self.scene.spheres.len() as u32,
-                triangle_count: self.scene.triangles.len() as u32,
+                triangle_count: self.get_triangle_count(),
             };
 
             self.buffers.update_accumulation(queue, &[params]);
@@ -217,5 +225,13 @@ impl Renderer {
 
         // bytes per row
         (value + alignment - 1) & !(alignment - 1)
+    }
+
+    pub fn get_triangle_count(&self) -> u32 {
+        self.scene
+            .objects
+            .iter()
+            .map(|obj: &SceneObject| obj.object_triangles.len())
+            .sum::<usize>() as u32
     }
 }
