@@ -21,7 +21,7 @@ pub struct Renderer {
     pub camera: Camera,
     pub scene: RenderScene,
     pub accumulate: bool,
-    pub light_mode: u32,
+    pub material_index: usize,
     accumulation_index: u32,
     buffers: buffers::DataBuffers,
 }
@@ -53,16 +53,12 @@ impl Renderer {
             camera,
             scene,
             accumulate,
-            light_mode: 0,
+            material_index: 0,
             accumulation_index: 1,
             buffers,
         };
 
         (renderer, bind_group_layout, compute_bind_group)
-    }
-
-    fn _reflect_ray(&self, ray: glam::Vec3A, normal: glam::Vec3A) -> glam::Vec3A {
-        ray - (2.0 * ray.dot(normal) * normal)
     }
 
     pub fn on_resize(

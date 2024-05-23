@@ -755,17 +755,84 @@ fn create_ui(
                     interacted = true;
                 };
 
-                ui.label("light mode:");
-                if ui
-                    .add(
-                        egui::Slider::new(&mut screne_renderer.light_mode, 0..=3)
-                            .integer()
-                            .show_value(false),
+                ui.label("selected material:");
+                ui.add(
+                    egui::Slider::new(
+                        &mut screne_renderer.material_index,
+                        0..=(screne_renderer.scene.materials.len() - 1),
                     )
-                    .changed()
-                {
-                    interacted = true;
-                };
+                    .integer()
+                    .show_value(false),
+                );
+
+                ui.vertical_centered_justified(|ui: &mut egui::Ui| {
+                    let current_material =
+                        &mut screne_renderer.scene.materials[screne_renderer.material_index];
+
+                    let color = &mut current_material.albedo;
+
+                    let emission_color = &mut current_material.emission_color;
+
+                    let emission_power = &mut current_material.emission_power;
+
+                    ui.horizontal(|ui| {
+                        if ui
+                            .color_edit_button_rgb(color)
+                            .on_hover_text("color")
+                            .changed()
+                        {
+                            interacted = true;
+                        };
+
+                        if ui
+                            .color_edit_button_rgb(emission_color)
+                            .on_hover_text("emission")
+                            .changed()
+                        {
+                            interacted = true;
+                        };
+                    });
+
+                    if ui
+                        .add(
+                            DragValue::new(emission_power)
+                                .speed(0.2)
+                                .clamp_range(0.0..=200.0)
+                                .prefix("emission power: "),
+                        )
+                        .changed()
+                    {
+                        interacted = true;
+                    };
+
+                    let material_roughness = &mut current_material.roughness;
+
+                    if ui
+                        .add(
+                            DragValue::new(material_roughness)
+                                .speed(0.01)
+                                .clamp_range(0.0..=1.0)
+                                .prefix("roughness: "),
+                        )
+                        .changed()
+                    {
+                        interacted = true;
+                    };
+
+                    let material_metallic = &mut current_material.metallic;
+
+                    if ui
+                        .add(
+                            DragValue::new(material_metallic)
+                                .speed(0.01)
+                                .clamp_range(0.0..=1.0)
+                                .prefix("metallic: "),
+                        )
+                        .changed()
+                    {
+                        interacted = true;
+                    };
+                });
 
                 let sky_color = &mut screne_renderer.scene.sky_color;
 
@@ -788,10 +855,7 @@ fn create_ui(
 
                     if !floor_sphere {
                         ui.label(format!("sphere {num} values"));
-                    } else {
-                        ui.label("floor values".to_string());
                     }
-
                     // X Y Z sliders
                     if !floor_sphere {
                         let sphere_position = &mut current_sphere.position;
@@ -801,7 +865,7 @@ fn create_ui(
                                 .add(
                                     DragValue::new(&mut sphere_position[0])
                                         .speed(0.1)
-                                        .clamp_range(-100.0..=100.0)
+                                        .clamp_range(-200.0..=200.0)
                                         .prefix("X: "),
                                 )
                                 .changed()
@@ -813,7 +877,7 @@ fn create_ui(
                                 .add(
                                     DragValue::new(&mut sphere_position[1])
                                         .speed(0.1)
-                                        .clamp_range(-100.0..=0.0)
+                                        .clamp_range(-200.0..=0.0)
                                         .prefix("Y: "),
                                 )
                                 .changed()
@@ -824,7 +888,7 @@ fn create_ui(
                                 .add(
                                     DragValue::new(&mut sphere_position[2])
                                         .speed(0.1)
-                                        .clamp_range(-100.0..=100.0)
+                                        .clamp_range(-200.0..=200.0)
                                         .prefix("Z: "),
                                 )
                                 .changed()
@@ -834,47 +898,8 @@ fn create_ui(
                         });
                     }
 
-                    // sliders for radius, roughness and metallic
+                    // sliders for radius
                     ui.vertical_centered_justified(|ui: &mut egui::Ui| {
-                        let material_index = current_sphere.material_index as usize;
-                        let current_material = &mut screne_renderer.scene.materials[material_index];
-
-                        let sphere_color = &mut current_material.albedo;
-
-                        let sphere_emission_color = &mut current_material.emission_color;
-
-                        let emission_power = &mut current_material.emission_power;
-
-                        ui.horizontal(|ui| {
-                            if ui
-                                .color_edit_button_rgb(sphere_color)
-                                .on_hover_text("color")
-                                .changed()
-                            {
-                                interacted = true;
-                            };
-
-                            if ui
-                                .color_edit_button_rgb(sphere_emission_color)
-                                .on_hover_text("emission")
-                                .changed()
-                            {
-                                interacted = true;
-                            };
-                        });
-
-                        if ui
-                            .add(
-                                DragValue::new(emission_power)
-                                    .speed(0.2)
-                                    .clamp_range(0.0..=200.0)
-                                    .prefix("emission power: "),
-                            )
-                            .changed()
-                        {
-                            interacted = true;
-                        };
-
                         if !floor_sphere {
                             let sphere_radius = &mut current_sphere.radius;
 
@@ -882,7 +907,7 @@ fn create_ui(
                                 .add(
                                     DragValue::new(sphere_radius)
                                         .speed(0.01)
-                                        .clamp_range(0.1..=30.0)
+                                        .clamp_range(0.1..=50.0)
                                         .prefix("radius: "),
                                 )
                                 .changed()
@@ -890,34 +915,6 @@ fn create_ui(
                                 interacted = true;
                             };
                         }
-
-                        let sphere_roughness = &mut current_material.roughness;
-
-                        if ui
-                            .add(
-                                DragValue::new(sphere_roughness)
-                                    .speed(0.01)
-                                    .clamp_range(0.0..=1.0)
-                                    .prefix("roughness: "),
-                            )
-                            .changed()
-                        {
-                            interacted = true;
-                        };
-
-                        let sphere_metallic = &mut current_material.metallic;
-
-                        if ui
-                            .add(
-                                DragValue::new(sphere_metallic)
-                                    .speed(0.01)
-                                    .clamp_range(0.0..=1.0)
-                                    .prefix("metallic: "),
-                            )
-                            .changed()
-                        {
-                            interacted = true;
-                        };
                     });
 
                     ui.add_space(15.0);
