@@ -1,6 +1,6 @@
 use crate::buffers::{ObjectInfo, Params, RayCamera, SceneMaterial, SceneSphere, SceneTriangle};
 
-use crate::stl_to_triangles::SceneObject;
+use crate::triangle_object::SceneObject;
 
 use super::camera::Camera;
 

@@ -1,7 +1,7 @@
 mod buffers;
 mod camera;
 mod renderer;
-mod stl_to_triangles;
+mod triangle_object;
 
 use buffers::{Params, SceneMaterial, SceneSphere};
 use camera::Camera;
@@ -9,7 +9,7 @@ use camera::Camera;
 use glam::vec3a;
 use renderer::{RenderScene, Renderer};
 
-use stl_to_triangles::SceneObject;
+use triangle_object::{load_stl_files, SceneObject};
 
 use egui::{pos2, Color32, DragValue, Frame, FullOutput};
 
@@ -124,12 +124,19 @@ fn define_render_scene() -> RenderScene {
         _padding: [0; 12],
     };
 
-    let queen_object = SceneObject::new("./3D_models/Queen.stl", 1.0, vec3a(0.0, 0.0, 0.0));
+    let object_vec = load_stl_files(
+        &["./3D_models/Queen.stl", "./3D_models/Knight.stl"],
+        &[2.0, 1.0],
+        &[vec3a(3.0, 0.0, 3.0), vec3a(0.0, 0.0, 0.0)],
+    );
+
+    dbg!(object_vec[0].object_info);
+    dbg!(object_vec[1].object_info);
 
     RenderScene {
         materials: vec![shiny_green, rough_blue, glossy_pink, shiny_orange, cool_red],
         spheres: vec![sphere_a, sphere_b, shiny_sphere, floor],
-        objects: vec![queen_object],
+        objects: object_vec,
         sky_color: [0., 0.04, 0.1],
     }
 }

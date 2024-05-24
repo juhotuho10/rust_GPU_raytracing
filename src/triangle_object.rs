@@ -5,6 +5,27 @@ use std::io::BufReader;
 
 use std::f32::consts::PI;
 
+pub fn load_stl_files(
+    file_names: &[&str],
+    scales: &[f32],
+    transformations: &[Vec3A],
+) -> Vec<SceneObject> {
+    let mut triangle_count = 0;
+    let mut scene_object_vec = vec![];
+
+    for i in 0..file_names.len() {
+        let new_obj =
+            SceneObject::new(file_names[i], scales[i], transformations[i], triangle_count);
+
+        triangle_count += new_obj.object_triangles.len() as u32;
+        scene_object_vec.push(new_obj);
+    }
+
+    dbg!(triangle_count);
+
+    scene_object_vec
+}
+
 #[derive(Debug, Clone)]
 pub struct SceneObject {
     normalized_points: Vec<Vec3A>,
@@ -18,10 +39,17 @@ pub struct SceneObject {
 }
 
 impl SceneObject {
-    pub fn new(filepath: &str, scale: f32, transformation: Vec3A) -> SceneObject {
+    pub fn new(
+        filepath: &str,
+        scale: f32,
+        transformation: Vec3A,
+        starting_triangle_index: u32,
+    ) -> SceneObject {
         // Open the STL file
         let file = File::open(filepath).unwrap();
         let mut reader = BufReader::new(file);
+
+        assert!(scale > 0.0, "scale has to be over 0.0");
 
         // Read the STL file
         let stl_file = stl_io::read_stl(&mut reader).expect("Failed to read STL file");
@@ -60,7 +88,7 @@ impl SceneObject {
 
         let object_info = ObjectInfo {
             min_bounds: min_coords.into(),
-            first_triangle_index: 0,
+            first_triangle_index: starting_triangle_index,
             max_bounds: max_coords.into(),
             triangle_count: triangles.len() as u32,
         };
