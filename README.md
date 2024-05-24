@@ -6,3 +6,4 @@ The next goal is to add support for loading in tringle meshes and have them rayt
 
 ![Ray tracer example 1](./Rendered_images/Raytracing_example.png)
 ![Ray tracer example 2](./Rendered_images/Raytracing_example2.png)
+![Ray tracer example 3](./Rendered_images/Raytracing_example3.png)

@@ -124,7 +124,7 @@ fn define_render_scene() -> RenderScene {
         _padding: [0; 12],
     };
 
-    let queen_object = SceneObject::new("./3D_models/Queen.stl", 10.0, vec3a(0.0, 0.0, 0.0));
+    let queen_object = SceneObject::new("./3D_models/Queen.stl", 1.0, vec3a(0.0, 0.0, 0.0));
 
     RenderScene {
         materials: vec![shiny_green, rough_blue, glossy_pink, shiny_orange, cool_red],
@@ -838,6 +838,138 @@ fn create_ui(
                     {
                         interacted = true;
                     };
+                });
+
+                ui.add_space(30.0);
+
+                ui.label("selected object:");
+                ui.add(
+                    egui::Slider::new(
+                        &mut screne_renderer.object_index,
+                        0..=(screne_renderer.scene.objects.len() - 1),
+                    )
+                    .integer()
+                    .show_value(false),
+                );
+
+                ui.vertical_centered_justified(|ui: &mut egui::Ui| {
+                    let current_object =
+                        &mut screne_renderer.scene.objects[screne_renderer.object_index];
+
+                    let coordinates = &mut current_object.transformation;
+
+                    ui.label("location:");
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add(
+                                DragValue::new(&mut coordinates[0])
+                                    .speed(0.1)
+                                    .clamp_range(-200.0..=200.0)
+                                    .prefix("X: "),
+                            )
+                            .changed()
+                        {
+                            interacted = true;
+                        };
+
+                        if ui
+                            .add(
+                                DragValue::new(&mut coordinates[1])
+                                    .speed(0.1)
+                                    .clamp_range(-200.0..=0.0)
+                                    .prefix("Y: "),
+                            )
+                            .changed()
+                        {
+                            interacted = true;
+                        };
+                        if ui
+                            .add(
+                                DragValue::new(&mut coordinates[2])
+                                    .speed(0.1)
+                                    .clamp_range(-200.0..=200.0)
+                                    .prefix("Z: "),
+                            )
+                            .changed()
+                        {
+                            interacted = true;
+                        };
+                    });
+
+                    ui.add_space(10.0);
+
+                    let rotation = &mut current_object.rotation;
+
+                    ui.label("rotation:");
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add(
+                                DragValue::new(&mut rotation[0])
+                                    .speed(1.0)
+                                    .clamp_range(-180.0..=180.0)
+                                    .prefix("X: "),
+                            )
+                            .changed()
+                        {
+                            interacted = true;
+                        };
+
+                        if ui
+                            .add(
+                                DragValue::new(&mut rotation[1])
+                                    .speed(1.0)
+                                    .clamp_range(-180.0..=180.0)
+                                    .prefix("Y: "),
+                            )
+                            .changed()
+                        {
+                            interacted = true;
+                        };
+                        if ui
+                            .add(
+                                DragValue::new(&mut rotation[2])
+                                    .speed(1.0)
+                                    .clamp_range(-180.0..=180.0)
+                                    .prefix("Z: "),
+                            )
+                            .changed()
+                        {
+                            interacted = true;
+                        };
+                    });
+
+                    // sliders for scale
+                    ui.vertical_centered_justified(|ui: &mut egui::Ui| {
+                        let object_size = &mut current_object.scale;
+
+                        if ui
+                            .add(
+                                DragValue::new(object_size)
+                                    .speed(0.01)
+                                    .clamp_range(0.1..=50.0)
+                                    .prefix("scale: "),
+                            )
+                            .changed()
+                        {
+                            interacted = true;
+                        };
+                    });
+
+                    ui.vertical_centered_justified(|ui: &mut egui::Ui| {
+                        // A greyed-out and non-interactive button:
+                        if ui.button("return to surface").clicked() {
+                            current_object.set_model_to_surface();
+                            interacted = true;
+                        }
+                    });
+
+                    ui.vertical_centered_justified(|ui: &mut egui::Ui| {
+                        // A greyed-out and non-interactive button:
+                        if ui.button("reset rotation").clicked() {
+                            current_object.reset_rotation();
+                            interacted = true;
+                        }
+                    });
                 });
 
                 let sky_color = &mut screne_renderer.scene.sky_color;

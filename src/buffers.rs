@@ -1,4 +1,4 @@
-use glam::{Mat3A, Vec3A};
+use glam::Vec3A;
 use wgpu::{util::DeviceExt, BindGroup, BindGroupLayout, Buffer, Device, Queue};
 
 #[repr(C)]
@@ -51,20 +51,17 @@ pub struct SceneTriangle {
 }
 
 impl SceneTriangle {
-    pub fn new(material_index: u32, a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> SceneTriangle {
+    pub fn new(material_index: u32, a: Vec3A, b: Vec3A, c: Vec3A) -> SceneTriangle {
         // precalculations to save on compute
-        let a_vec: Vec3A = a.into();
-        let b_vec: Vec3A = b.into();
-        let c_vec: Vec3A = c.into();
 
-        let edge_ab = b_vec - a_vec;
-        let edge_ac = c_vec - a_vec;
+        let edge_ab = b - a;
+        let edge_ac = c - a;
 
         let calc_normal = edge_ab.cross(edge_ac);
         let face_normal = calc_normal.normalize();
 
         SceneTriangle {
-            a,                               // vec3, aligned to 12 bytes
+            a: a.into(),                     // vec3, aligned to 12 bytes
             material_index,                  // u32, aligned to 4 bytes
             edge_ab: edge_ab.into(),         // vec3, aligned to 12 bytes
             _padding: [0; 4],                // padding to ensure 16-byte alignment
@@ -400,6 +397,14 @@ impl DataBuffers {
             &self.triangle_buffer,
             0,
             bytemuck::cast_slice(new_triangles),
+        );
+    }
+
+    pub fn update_object_info(&self, queue: &Queue, new_object_info: &[ObjectInfo]) {
+        queue.write_buffer(
+            &self.object_buffer,
+            0,
+            bytemuck::cast_slice(new_object_info),
         );
     }
 

@@ -1,4 +1,4 @@
-use crate::buffers::{ObjectInfo, Params, RayCamera, SceneMaterial, SceneSphere};
+use crate::buffers::{ObjectInfo, Params, RayCamera, SceneMaterial, SceneSphere, SceneTriangle};
 
 use crate::stl_to_triangles::SceneObject;
 
@@ -23,6 +23,7 @@ pub struct Renderer {
     pub scene: RenderScene,
     pub accumulate: bool,
     pub material_index: usize,
+    pub object_index: usize,
     accumulation_index: u32,
     buffers: buffers::DataBuffers,
 }
@@ -38,13 +39,7 @@ impl Renderer {
         let camera_rays = camera.recalculate_ray_directions();
         let accumulate = params.accumulate == 1;
 
-        let mut triangles = vec![];
-        let mut object_info_vec: Vec<ObjectInfo> = vec![];
-
-        for object in &scene.objects {
-            triangles.extend(object.object_triangles.clone());
-            object_info_vec.push(object.object_info);
-        }
+        let (object_info_vec, triangles) = get_triangle_data(&scene);
 
         let (buffers, bind_group_layout, compute_bind_group) = buffers::DataBuffers::new(
             device,
@@ -62,6 +57,7 @@ impl Renderer {
             scene,
             accumulate,
             material_index: 0,
+            object_index: 0,
             accumulation_index: 1,
             buffers,
         };
@@ -130,8 +126,14 @@ impl Renderer {
         let new_spheres = &self.scene.spheres;
         self.buffers.update_spheres(queue, new_spheres);
 
-        let new_triangles = &self.scene.objects[0].object_triangles;
-        self.buffers.update_triangles(queue, new_triangles);
+        for object in &mut self.scene.objects {
+            object.update_triangles();
+        }
+        let (new_object_info, new_triangles) = get_triangle_data(&self.scene);
+
+        self.buffers.update_triangles(queue, &new_triangles);
+
+        self.buffers.update_object_info(queue, &new_object_info);
 
         let new_materials = &self.scene.materials;
         self.buffers.update_materials(queue, new_materials);
@@ -155,7 +157,7 @@ impl Renderer {
         if self.accumulate {
             let params = Params {
                 sky_color: self.scene.sky_color,
-                width: self.camera.viewport_width,
+                width,
                 accumulation_index: self.accumulation_index,
                 accumulate: self.accumulate as u32,
                 sphere_count: self.scene.spheres.len() as u32,
@@ -234,4 +236,19 @@ impl Renderer {
             .map(|obj: &SceneObject| obj.object_triangles.len())
             .sum::<usize>() as u32
     }
+}
+
+pub fn get_triangle_data(scene: &RenderScene) -> (Vec<ObjectInfo>, Vec<SceneTriangle>) {
+    let object_info_vec: Vec<ObjectInfo> = scene
+        .objects
+        .iter()
+        .map(|object| object.object_info)
+        .collect();
+
+    let triangles: Vec<_> = scene
+        .objects
+        .iter()
+        .flat_map(|object| object.object_triangles.clone())
+        .collect();
+    (object_info_vec, triangles)
 }
