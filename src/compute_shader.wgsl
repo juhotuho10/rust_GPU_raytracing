@@ -205,20 +205,24 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
 
             let reflect_percentage: f32 = reflect_percentage(cos_theta, refraction_index);
 
-            if reflects || reflect_percentage > random(&seed){
-                // reflection
+            if reflects || (current_material.specular * reflect_percentage) > random(&seed){
+                // specular reflection, bounces off the glass
                 
                 ray.direction = lerp(specular_direction, diffuse_direction, current_material.specular_scatter);
                 ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
 
             } else { 
-                // refraction
+                // refraction, goes through the glass
 
-                let r_out_perp: vec3<f32> =  refraction_index * (ray.direction + cos_theta * hit_payload.world_normal);
-                let r_out_parallel: vec3<f32> = -sqrt(abs(1.0 - length(r_out_perp) * length(r_out_perp))) * hit_payload.world_normal;
-                let refraction_direction: vec3<f32> = r_out_perp + r_out_parallel;
+                let ray_perpendicular: vec3<f32> =  refraction_index * (ray.direction + cos_theta * hit_payload.world_normal);
+
+                let len_squared = length(ray_perpendicular) * length(ray_perpendicular);
+                let ray_parallel: vec3<f32> = -sqrt(abs(1.0 - len_squared)) * hit_payload.world_normal;
+
+                let refraction_direction: vec3<f32> = ray_perpendicular + ray_parallel;
                 
-                ray.direction = lerp(refraction_direction, diffuse_direction, current_material.roughness);
+                // normal roughness calculation in wayy to harsh for glass, 1/10 is plenty
+                ray.direction = lerp(refraction_direction, diffuse_direction, current_material.roughness / 10.0);
 
                 // ray goes through the material so we want it to be set on the opposite side of the hitside normal
                 ray.origin = hit_payload.world_position - hit_payload.world_normal * 0.0001;
@@ -400,12 +404,7 @@ fn check_triangles(ray: Ray) -> HitPayload{
                 continue;
             }
 
-            
-
-
             closest_distance = distance;
-
-
 
             closest_hitpayload = HitPayload(
                 distance,
