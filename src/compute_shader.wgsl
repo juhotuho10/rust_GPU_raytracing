@@ -181,10 +181,16 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
         let material_index: u32 = hit_payload.material_index;
         let current_material: SceneMaterial = material_array[material_index];
 
+        let diffuse_direction: vec3<f32> = normalize(hit_payload.world_normal + random_normal_scaler(&seed));
+        let specular_direction: vec3<f32> = reflect(ray.direction, hit_payload.world_normal);
+
+        let emitted_light = current_material.albedo * current_material.emission_power;
+        light += emitted_light * light_contribution;
+
         let is_glass: bool = current_material.glass > random(&seed);
 
         if is_glass{
-            
+
             var refraction_index: f32 = current_material.refraction_index;
 
             if hit_payload.front_face{
@@ -197,16 +203,16 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
 
             let reflects: bool = refraction_index * sin_theta > 1.0;
 
-            let reflect_percentage = reflect_percentage(cos_theta, refraction_index);
+            let reflect_percentage: f32 = reflect_percentage(cos_theta, refraction_index);
 
             if reflects || reflect_percentage > random(&seed){
-                ray.direction = reflect(ray.direction, hit_payload.world_normal);
+                // reflection
                 
+                ray.direction = lerp(specular_direction, diffuse_direction, current_material.specular_scatter);
                 ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
 
             } else { 
                 // refraction
-                var diffuse_direction: vec3<f32> = normalize(hit_payload.world_normal + random_normal_scaler(&seed));
 
                 let r_out_perp: vec3<f32> =  refraction_index * (ray.direction + cos_theta * hit_payload.world_normal);
                 let r_out_parallel: vec3<f32> = -sqrt(abs(1.0 - length(r_out_perp) * length(r_out_perp))) * hit_payload.world_normal;
@@ -214,6 +220,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
                 
                 ray.direction = lerp(refraction_direction, diffuse_direction, current_material.roughness);
 
+                // ray goes through the material so we want it to be set on the opposite side of the hitside normal
                 ray.origin = hit_payload.world_position - hit_payload.world_normal * 0.0001;
 
                 light_contribution *= current_material.albedo;
@@ -221,18 +228,11 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
 
         }else{
 
-            let diffuse_direction = normalize(hit_payload.world_normal + random_normal_scaler(&seed));
-            let specular_direction = reflect(ray.direction, hit_payload.world_normal);
-
-
-            let emitted_light = current_material.albedo * current_material.emission_power;
-            light += emitted_light * light_contribution;
-            
-
             let is_specular_bounce: bool = current_material.specular > random(&seed);
 
             if is_specular_bounce{
                 ray.direction = lerp(specular_direction, diffuse_direction, current_material.specular_scatter);
+
             }else{
                 ray.direction = lerp(specular_direction, diffuse_direction, current_material.roughness);
                 light_contribution *= current_material.albedo;
@@ -245,6 +245,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
     }
     return light;
 }
+
 
 fn reflect_percentage(cos_theta: f32, refraction_index: f32) -> f32{
     // Schlick's approximation for reflectance
