@@ -24,8 +24,12 @@ struct SceneMaterial {
     emission_power: f32,            
     specular: f32,            
     specular_scatter: f32,
+    glass: f32,
+    refraction_index: f32,
     // explicit padding to match 16 byte alignment
     _padding1: u32,
+    _padding2: u32,
+    _padding3: u32,
            
 }
 
@@ -66,6 +70,7 @@ struct HitPayload {
     world_position: vec3<f32>,
     world_normal: vec3<f32>,
     material_index: u32,
+    front_face: bool,
 }
 
 struct Ray {
@@ -176,26 +181,56 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
         let material_index: u32 = hit_payload.material_index;
         let current_material: SceneMaterial = material_array[material_index];
 
-        
+        let is_glass: bool = current_material.glass > random(&seed);
 
-        let diffuse_direction = normalize(hit_payload.world_normal + random_normal_scaler(&seed));
-        let specular_direction = reflect(ray.direction, hit_payload.world_normal);
+        if is_glass{
+            
+            var ri: f32 = current_material.refraction_index;
 
+            if hit_payload.front_face{
+                ri = 1.0 /ri;
+            }
+            
 
-        let emitted_light = current_material.albedo * current_material.emission_power;
-        light += emitted_light * light_contribution;
-        
+            let cos_theta: f32 = min(dot(-ray.direction, hit_payload.world_normal), 1.0);
 
-        let is_specular_bounce: bool = current_material.specular > random(&seed);
+            let sin_theta: f32 = sqrt(1.0 - cos_theta*cos_theta);
 
-        if is_specular_bounce{
-            ray.direction = lerp(specular_direction, diffuse_direction, current_material.specular_scatter);
+            let reflects: bool = ri * sin_theta > 1.0;
+
+            if reflects{
+                ray.direction = ray.direction - 2 * dot(ray.direction, hit_payload.world_normal) * hit_payload.world_normal;
+            } else { 
+                // refraction
+                let r_out_perp =  ri * (ray.direction + cos_theta * hit_payload.world_normal);
+                let r_out_parallel = -sqrt(abs(1.0 - length(r_out_perp) * length(r_out_perp))) * hit_payload.world_normal;
+                ray.direction = r_out_perp + r_out_parallel;
+            }
+
+            ray.origin = hit_payload.world_position - hit_payload.world_normal * 0.0001;
+
         }else{
-            ray.direction = lerp(specular_direction, diffuse_direction, current_material.roughness);
-            light_contribution *= current_material.albedo;
-        }
 
-        ray.origin = hit_payload.world_position;
+            let diffuse_direction = normalize(hit_payload.world_normal + random_normal_scaler(&seed));
+            let specular_direction = reflect(ray.direction, hit_payload.world_normal);
+
+
+            let emitted_light = current_material.albedo * current_material.emission_power;
+            light += emitted_light * light_contribution;
+            
+
+            let is_specular_bounce: bool = current_material.specular > random(&seed);
+
+            if is_specular_bounce{
+                ray.direction = lerp(specular_direction, diffuse_direction, current_material.specular_scatter);
+            }else{
+                ray.direction = lerp(specular_direction, diffuse_direction, current_material.roughness);
+                light_contribution *= current_material.albedo;
+            }
+
+            ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
+
+        }
 
     }
     return light;
@@ -303,8 +338,15 @@ fn check_triangles(ray: Ray) -> HitPayload{
             
             let determinant: f32 = -dot(ray.direction, tri.calc_normal);
 
-            if determinant < 1.0e-6 {
-                continue;
+            var front_face: bool;
+
+            var face_normal: vec3<f32> = tri.face_normal;
+
+            if determinant > 0.0 {
+                front_face = true;
+            }else{
+                front_face = false;
+                face_normal = -face_normal;
             }
 
             let inv_det: f32 = 1 / determinant;
@@ -317,7 +359,6 @@ fn check_triangles(ray: Ray) -> HitPayload{
                 continue;
             }
 
-        
             let dao: vec3<f32> = cross(ao, ray.direction); 
 
             // calculate distance and intersection
@@ -340,20 +381,19 @@ fn check_triangles(ray: Ray) -> HitPayload{
                 continue;
             }
 
-            var face_normal: vec3<f32> = tri.face_normal;
-
-            if determinant < 0.0 {
-                face_normal = -face_normal;
-            }
+            
 
 
             closest_distance = distance;
 
+
+
             closest_hitpayload = HitPayload(
                 distance,
-                ray.origin + ray.direction * distance * 0.9999,
+                ray.origin + ray.direction * distance,
                 face_normal,
-                tri.material_index
+                tri.material_index,
+                front_face,
                 );
   
             };
@@ -368,7 +408,8 @@ fn miss() -> HitPayload{
     return HitPayload(F32_MAX, 
     vec3<f32>(0.0),
     vec3<f32>(0.0),
-    0u
+    0u,
+    false,
     );
 }
 
@@ -376,14 +417,25 @@ fn miss() -> HitPayload{
 fn sphere_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
     let closest_sphere: SceneSphere = sphere_array[object_index];
 
-    let hit_point: vec3<f32> = ray.origin + ray.direction * hit_distance * 0.9999;
-    let sphere_normal: vec3<f32> = normalize(hit_point - closest_sphere.position);
+    let hit_point: vec3<f32> = ray.origin + ray.direction * hit_distance;
+    var outward_normal: vec3<f32> = normalize(hit_point - closest_sphere.position);
 
+
+    let front_face = dot(ray.direction, outward_normal) < 0;
+
+    var normal: vec3<f32>;
+
+    if front_face{
+        normal = outward_normal;
+    }else{
+        normal = -outward_normal;
+    }
 
     return HitPayload(hit_distance, 
     hit_point,
-    sphere_normal,
+    normal,
     closest_sphere.material_index,
+    front_face,
     );
 }
 
@@ -434,5 +486,3 @@ fn normal_distribution(seed: ptr<function, u32>) -> f32{
 fn normalize_u32(value: u32) -> f32{
     return f32(value) / f32(U32_MAX);
 }
-
-

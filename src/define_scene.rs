@@ -15,7 +15,9 @@ pub(crate) fn define_render_scene() -> RenderScene {
         emission_power: 0.0,
         specular: 0.6,
         specular_scatter: 0.0,
-        _padding: [0; 4],
+        glass: 1.0,
+        refraction_index: 2.0,
+        _padding: [0; 12],
     };
 
     let rough_blue = SceneMaterial {
@@ -24,7 +26,9 @@ pub(crate) fn define_render_scene() -> RenderScene {
         emission_power: 0.0,
         specular: 0.1,
         specular_scatter: 1.0,
-        _padding: [0; 4],
+        glass: 0.0,
+        refraction_index: 1.0,
+        _padding: [0; 12],
     };
 
     let glossy_pink = SceneMaterial {
@@ -33,7 +37,9 @@ pub(crate) fn define_render_scene() -> RenderScene {
         emission_power: 0.0,
         specular: 0.5,
         specular_scatter: 0.1,
-        _padding: [0; 4],
+        glass: 0.0,
+        refraction_index: 1.0,
+        _padding: [0; 12],
     };
 
     let shiny_orange = SceneMaterial {
@@ -42,7 +48,9 @@ pub(crate) fn define_render_scene() -> RenderScene {
         emission_power: 10.0,
         specular: 0.3,
         specular_scatter: 0.1,
-        _padding: [0; 4],
+        glass: 0.0,
+        refraction_index: 1.0,
+        _padding: [0; 12],
     };
 
     let cool_red = SceneMaterial {
@@ -51,7 +59,9 @@ pub(crate) fn define_render_scene() -> RenderScene {
         emission_power: 0.0,
         specular: 0.3,
         specular_scatter: 0.0,
-        _padding: [0; 4],
+        glass: 0.0,
+        refraction_index: 1.0,
+        _padding: [0; 12],
     };
 
     let shiny_white = SceneMaterial {
@@ -60,7 +70,9 @@ pub(crate) fn define_render_scene() -> RenderScene {
         emission_power: 0.0,
         specular: 0.3,
         specular_scatter: 0.05,
-        _padding: [0; 4],
+        glass: 0.0,
+        refraction_index: 1.0,
+        _padding: [0; 12],
     };
 
     // ###################### walls ###################################
@@ -72,7 +84,9 @@ pub(crate) fn define_render_scene() -> RenderScene {
         emission_power: 0.0,
         specular: 0.1,
         specular_scatter: 0.4,
-        _padding: [0; 4],
+        glass: 0.0,
+        refraction_index: 1.0,
+        _padding: [0; 12],
     };
 
     //7
@@ -82,7 +96,9 @@ pub(crate) fn define_render_scene() -> RenderScene {
         emission_power: 0.0,
         specular: 0.1,
         specular_scatter: 0.4,
-        _padding: [0; 4],
+        glass: 0.0,
+        refraction_index: 1.0,
+        _padding: [0; 12],
     };
 
     //8
@@ -92,7 +108,9 @@ pub(crate) fn define_render_scene() -> RenderScene {
         emission_power: 0.0,
         specular: 0.1,
         specular_scatter: 0.4,
-        _padding: [0; 4],
+        glass: 0.0,
+        refraction_index: 1.0,
+        _padding: [0; 12],
     };
 
     //9
@@ -102,7 +120,9 @@ pub(crate) fn define_render_scene() -> RenderScene {
         emission_power: 0.0,
         specular: 0.1,
         specular_scatter: 0.4,
-        _padding: [0; 4],
+        glass: 0.0,
+        refraction_index: 1.0,
+        _padding: [0; 12],
     };
 
     //10
@@ -112,7 +132,9 @@ pub(crate) fn define_render_scene() -> RenderScene {
         emission_power: 0.0,
         specular: 0.1,
         specular_scatter: 0.4,
-        _padding: [0; 4],
+        glass: 0.0,
+        refraction_index: 1.0,
+        _padding: [0; 12],
     };
 
     //11
@@ -122,7 +144,9 @@ pub(crate) fn define_render_scene() -> RenderScene {
         emission_power: 8.0,
         specular: 0.1,
         specular_scatter: 0.4,
-        _padding: [0; 4],
+        glass: 0.0,
+        refraction_index: 1.0,
+        _padding: [0; 12],
     };
 
     //12
@@ -132,7 +156,9 @@ pub(crate) fn define_render_scene() -> RenderScene {
         emission_power: 0.0,
         specular: 1.0,
         specular_scatter: 0.0,
-        _padding: [0; 4],
+        glass: 0.0,
+        refraction_index: 1.0,
+        _padding: [0; 12],
     };
 
     // ###################### walls ###################################

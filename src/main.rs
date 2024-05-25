@@ -233,10 +233,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             (bind_group_layout, bind_group) =
                                 create_device_bindgroup(&device, &texture, &sampler);
 
-                            // ###################### COMPUTE RESIZING ##################################
-
-                            // ####################################################
-
                             surface.configure(&device, &surface_config);
                             // On macos the window needs to be redrawn manually after resizing
 
@@ -640,7 +636,7 @@ fn generate_instance() -> Instance {
     wgpu::Instance::new(instance_desc)
 }
 
-// ######################### compute ########################################
+// ######################### UI CREATION ########################################
 
 fn create_ui(
     device: &wgpu::Device,
@@ -727,6 +723,19 @@ fn create_ui(
                     {
                         interacted = true;
                     }
+
+                    let glass_refraction = &mut current_material.glass;
+
+                    if create_drag_value!(ui, glass_refraction, 0.01, 0.0..=1.0, "glass") {
+                        interacted = true;
+                    }
+
+                    let refraction_index = &mut current_material.refraction_index;
+
+                    if create_drag_value!(ui, refraction_index, 0.01, 0.0..=5.0, "refraction index")
+                    {
+                        interacted = true;
+                    }
                 });
 
                 ui.add_space(30.0);
@@ -790,7 +799,6 @@ fn create_ui(
                     });
 
                     ui.vertical_centered_justified(|ui: &mut egui::Ui| {
-                        // A greyed-out and non-interactive button:
                         if ui.button("return to surface").clicked() {
                             current_object.set_model_to_surface();
                             interacted = true;
@@ -798,7 +806,6 @@ fn create_ui(
                     });
 
                     ui.vertical_centered_justified(|ui: &mut egui::Ui| {
-                        // A greyed-out and non-interactive button:
                         if ui.button("reset rotation").clicked() {
                             current_object.reset_rotation();
                             interacted = true;
