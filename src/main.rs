@@ -705,59 +705,28 @@ fn create_ui(
                         };
                     });
 
-                    if ui
-                        .add(
-                            DragValue::new(emission_power)
-                                .speed(0.2)
-                                .clamp_range(0.0..=200.0)
-                                .prefix("emission power:"),
-                        )
-                        .changed()
-                    {
+                    if create_drag_value!(ui, emission_power, 0.2, 0.0..=200.0, "emission power:") {
                         interacted = true;
-                    };
+                    }
 
                     let material_roughness = &mut current_material.roughness;
 
-                    if ui
-                        .add(
-                            DragValue::new(material_roughness)
-                                .speed(0.01)
-                                .clamp_range(0.0..=1.0)
-                                .prefix("roughness:"),
-                        )
-                        .changed()
-                    {
+                    if create_drag_value!(ui, material_roughness, 0.01, 0.0..=1.0, "roughness:") {
                         interacted = true;
-                    };
+                    }
 
                     let material_specular = &mut current_material.specular;
 
-                    if ui
-                        .add(
-                            DragValue::new(material_specular)
-                                .speed(0.01)
-                                .clamp_range(0.0..=1.0)
-                                .prefix("specular:"),
-                        )
-                        .changed()
-                    {
+                    if create_drag_value!(ui, material_specular, 0.01, 0.0..=1.0, "specular:") {
                         interacted = true;
-                    };
+                    }
 
                     let specular_scatter = &mut current_material.specular_scatter;
 
-                    if ui
-                        .add(
-                            DragValue::new(specular_scatter)
-                                .speed(0.01)
-                                .clamp_range(0.0..=0.5)
-                                .prefix("specular scatter:"),
-                        )
-                        .changed()
+                    if create_drag_value!(ui, specular_scatter, 0.01, 0.0..=0.5, "specular scatter")
                     {
                         interacted = true;
-                    };
+                    }
                 });
 
                 ui.add_space(30.0);
@@ -779,40 +748,17 @@ fn create_ui(
 
                     ui.label("location:");
                     ui.horizontal(|ui| {
-                        if ui
-                            .add(
-                                DragValue::new(&mut coordinates[0])
-                                    .speed(0.1)
-                                    .clamp_range(-200.0..=200.0)
-                                    .prefix("X: "),
-                            )
-                            .changed()
-                        {
+                        if create_drag_value!(ui, &mut coordinates[0], 0.1, -200.0..=200.0, "X: ") {
                             interacted = true;
-                        };
+                        }
 
-                        if ui
-                            .add(
-                                DragValue::new(&mut coordinates[1])
-                                    .speed(0.1)
-                                    .clamp_range(-200.0..=10.0)
-                                    .prefix("Y: "),
-                            )
-                            .changed()
-                        {
+                        if create_drag_value!(ui, &mut coordinates[1], 0.1, -200.0..=10.0, "Y: ") {
                             interacted = true;
-                        };
-                        if ui
-                            .add(
-                                DragValue::new(&mut coordinates[2])
-                                    .speed(0.1)
-                                    .clamp_range(-200.0..=200.0)
-                                    .prefix("Z: "),
-                            )
-                            .changed()
-                        {
+                        }
+
+                        if create_drag_value!(ui, &mut coordinates[2], 0.1, -200.0..=200.0, "Z: ") {
                             interacted = true;
-                        };
+                        }
                     });
 
                     ui.add_space(10.0);
@@ -821,57 +767,26 @@ fn create_ui(
 
                     ui.label("rotation:");
                     ui.horizontal(|ui| {
-                        if ui
-                            .add(
-                                DragValue::new(&mut rotation[0])
-                                    .speed(1.0)
-                                    .clamp_range(-180.0..=180.0)
-                                    .prefix("X: "),
-                            )
-                            .changed()
-                        {
+                        if create_drag_value!(ui, &mut rotation[0], 1.0, -180.0..=180.0, "X: ") {
                             interacted = true;
-                        };
+                        }
 
-                        if ui
-                            .add(
-                                DragValue::new(&mut rotation[1])
-                                    .speed(1.0)
-                                    .clamp_range(-180.0..=180.0)
-                                    .prefix("Y: "),
-                            )
-                            .changed()
-                        {
+                        if create_drag_value!(ui, &mut rotation[1], 1.0, -180.0..=180.0, "Y: ") {
                             interacted = true;
-                        };
-                        if ui
-                            .add(
-                                DragValue::new(&mut rotation[2])
-                                    .speed(1.0)
-                                    .clamp_range(-180.0..=180.0)
-                                    .prefix("Z: "),
-                            )
-                            .changed()
-                        {
+                        }
+
+                        if create_drag_value!(ui, &mut rotation[2], 1.0, -180.0..=180.0, "Z: ") {
                             interacted = true;
-                        };
+                        }
                     });
 
                     // sliders for scale
                     ui.vertical_centered_justified(|ui: &mut egui::Ui| {
                         let object_size = &mut current_object.scale;
 
-                        if ui
-                            .add(
-                                DragValue::new(object_size)
-                                    .speed(0.01)
-                                    .clamp_range(0.1..=50.0)
-                                    .prefix("scale: "),
-                            )
-                            .changed()
-                        {
+                        if create_drag_value!(ui, object_size, 0.01, 0.1..=50.0, "scale: ") {
                             interacted = true;
-                        };
+                        }
                     });
 
                     ui.vertical_centered_justified(|ui: &mut egui::Ui| {
@@ -911,65 +826,34 @@ fn create_ui(
                     .integer(),
                 );
 
-                let current_sphere =
-                    &mut screne_renderer.scene.spheres[screne_renderer.sphere_index];
+                let index = screne_renderer.sphere_index;
+                let current_sphere = &mut screne_renderer.scene.spheres[index];
 
                 // X Y Z sliders
 
                 let sphere_position = &mut current_sphere.position;
 
                 ui.horizontal(|ui| {
-                    if ui
-                        .add(
-                            DragValue::new(&mut sphere_position[0])
-                                .speed(0.1)
-                                .clamp_range(-200.0..=200.0)
-                                .prefix("X: "),
-                        )
-                        .changed()
-                    {
+                    if create_drag_value!(ui, &mut sphere_position[0], 0.1, -200.0..=200.0, "X: ") {
                         interacted = true;
-                    };
+                    }
 
-                    if ui
-                        .add(
-                            DragValue::new(&mut sphere_position[1])
-                                .speed(0.1)
-                                .clamp_range(-200.0..=0.0)
-                                .prefix("Y: "),
-                        )
-                        .changed()
-                    {
+                    if create_drag_value!(ui, &mut sphere_position[1], 0.1, -200.0..=10.0, "Y: ") {
                         interacted = true;
-                    };
-                    if ui
-                        .add(
-                            DragValue::new(&mut sphere_position[2])
-                                .speed(0.1)
-                                .clamp_range(-200.0..=200.0)
-                                .prefix("Z: "),
-                        )
-                        .changed()
-                    {
+                    }
+
+                    if create_drag_value!(ui, &mut sphere_position[2], 0.1, -200.0..=200.0, "Z: ") {
                         interacted = true;
-                    };
+                    }
                 });
 
                 // sliders for radius
                 ui.vertical_centered_justified(|ui: &mut egui::Ui| {
                     let sphere_radius = &mut current_sphere.radius;
 
-                    if ui
-                        .add(
-                            DragValue::new(sphere_radius)
-                                .speed(0.01)
-                                .clamp_range(0.1..=50.0)
-                                .prefix("radius: "),
-                        )
-                        .changed()
-                    {
+                    if create_drag_value!(ui, sphere_radius, 0.01, 0.1..=50.0, "radius: ") {
                         interacted = true;
-                    };
+                    }
                 });
 
                 ui.add_space(15.0);
@@ -981,4 +865,24 @@ fn create_ui(
     }
 
     egui_context.end_frame()
+}
+
+// simple macro for makíng the UI more compact
+#[macro_export]
+macro_rules! create_drag_value {
+    ($ui:expr, $value:expr, $speed:expr, $range:expr, $prefix:expr) => {{
+        if $ui
+            .add(
+                DragValue::new($value)
+                    .speed($speed)
+                    .clamp_range($range)
+                    .prefix($prefix),
+            )
+            .changed()
+        {
+            true
+        } else {
+            false
+        }
+    }};
 }
