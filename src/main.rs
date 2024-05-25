@@ -9,7 +9,7 @@ use camera::Camera;
 use glam::vec3a;
 use renderer::{RenderScene, Renderer};
 
-use triangle_object::{load_stl_files, SceneObject};
+use triangle_object::{load_stl_files, ObjectCreation, SceneObject};
 
 use egui::{pos2, Color32, DragValue, Frame, FullOutput};
 
@@ -95,6 +95,89 @@ fn define_render_scene() -> RenderScene {
         _padding: [0; 4],
     };
 
+    let shiny_white = SceneMaterial {
+        albedo: [0.9, 0.9, 0.9],
+        roughness: 0.7,
+        emission_power: 0.0,
+        specular: 0.3,
+        specular_scatter: 0.05,
+        _padding: [0; 4],
+    };
+
+    // ###################### walls ###################################
+
+    //6
+    let wall_1 = SceneMaterial {
+        albedo: [1.0, 0.0, 0.0],
+        roughness: 0.8,
+        emission_power: 0.0,
+        specular: 0.1,
+        specular_scatter: 0.4,
+        _padding: [0; 4],
+    };
+
+    //7
+    let wall_2 = SceneMaterial {
+        albedo: [0.0, 1.0, 0.0],
+        roughness: 0.8,
+        emission_power: 0.0,
+        specular: 0.1,
+        specular_scatter: 0.4,
+        _padding: [0; 4],
+    };
+
+    //8
+    let wall_3 = SceneMaterial {
+        albedo: [0.0, 0.0, 1.0],
+        roughness: 0.8,
+        emission_power: 0.0,
+        specular: 0.1,
+        specular_scatter: 0.4,
+        _padding: [0; 4],
+    };
+
+    //9
+    let wall_4 = SceneMaterial {
+        albedo: [0.2, 0.2, 0.2],
+        roughness: 0.8,
+        emission_power: 0.0,
+        specular: 0.1,
+        specular_scatter: 0.4,
+        _padding: [0; 4],
+    };
+
+    //10
+    let wall_5 = SceneMaterial {
+        albedo: [1.0, 1.0, 1.0],
+        roughness: 0.8,
+        emission_power: 0.0,
+        specular: 0.1,
+        specular_scatter: 0.4,
+        _padding: [0; 4],
+    };
+
+    //11
+    let wall_6 = SceneMaterial {
+        albedo: [1.0, 1.0, 1.0],
+        roughness: 0.8,
+        emission_power: 8.0,
+        specular: 0.1,
+        specular_scatter: 0.4,
+        _padding: [0; 4],
+    };
+
+    //12
+    let wall_7 = SceneMaterial {
+        albedo: [0.0, 0.0, 0.0],
+        roughness: 0.8,
+        emission_power: 0.0,
+        specular: 1.0,
+        specular_scatter: 0.0,
+        _padding: [0; 4],
+    };
+
+    // ###################### walls ###################################
+
     let sphere_a: SceneSphere = SceneSphere {
         position: [1., -0.5, -2.],
         radius: 0.5,
@@ -116,26 +199,105 @@ fn define_render_scene() -> RenderScene {
         _padding: [0; 12],
     };
 
-    // sphere to act as a floor
-    let floor: SceneSphere = SceneSphere {
-        position: [0., 500., 0.],
-        radius: 500.,
-        material_index: 1,
-        _padding: [0; 12],
-    };
-
-    let object_vec = load_stl_files(
-        &["./3D_models/Queen.stl", "./3D_models/Knight.stl"],
-        &[2.0, 1.0],
-        &[vec3a(3.0, 0.0, 3.0), vec3a(0.0, 0.0, 0.0)],
-    );
-
-    dbg!(object_vec[0].object_info);
-    dbg!(object_vec[1].object_info);
+    let object_vec = load_stl_files(&[
+        ObjectCreation {
+            file_path: "./3D_models/Queen.stl".to_string(),
+            scale: 2.0,
+            coordinates: vec3a(3.0, 0.0, 3.0),
+            rotation: vec3a(90.0, 0.0, 0.0),
+            material_index: 4,
+        },
+        ObjectCreation {
+            file_path: "./3D_models/Knight.stl".to_string(),
+            scale: 1.0,
+            coordinates: vec3a(0.0, 0.0, 3.0),
+            rotation: vec3a(90.0, 0.0, 0.0),
+            material_index: 5,
+        },
+        // waalllllss
+        ObjectCreation {
+            file_path: "./3D_models/Wall.stl".to_string(),
+            scale: 8.0,
+            coordinates: vec3a(13.7, 0.0, 2.7),
+            rotation: vec3a(90.0, 0.0, 0.0),
+            material_index: 12,
+        },
+        ObjectCreation {
+            file_path: "./3D_models/Wall.stl".to_string(),
+            scale: 8.0,
+            coordinates: vec3a(13.7, 0.0, -2.7),
+            rotation: vec3a(90.0, 0.0, 0.0),
+            material_index: 6,
+        },
+        ObjectCreation {
+            file_path: "./3D_models/Wall.stl".to_string(),
+            scale: 8.0,
+            coordinates: vec3a(11.0, 0.0, 0.0),
+            rotation: vec3a(90.0, 90.0, 0.0),
+            material_index: 8,
+        },
+        ObjectCreation {
+            file_path: "./3D_models/Wall.stl".to_string(),
+            scale: 8.0,
+            coordinates: vec3a(13.7, -5.5, 0.0),
+            rotation: vec3a(0.0, 0.0, 0.0),
+            material_index: 9,
+        },
+        ObjectCreation {
+            file_path: "./3D_models/Wall.stl".to_string(),
+            scale: 8.0,
+            coordinates: vec3a(13.7, 0.0, 0.0),
+            rotation: vec3a(0.0, 0.0, 0.0),
+            material_index: 7,
+        },
+        ObjectCreation {
+            file_path: "./3D_models/Wall.stl".to_string(),
+            scale: 8.0,
+            coordinates: vec3a(13.7, -5.5, 0.0),
+            rotation: vec3a(0.0, 0.0, 0.0),
+            material_index: 10,
+        },
+        ObjectCreation {
+            file_path: "./3D_models/Wall.stl".to_string(),
+            scale: 8.0,
+            coordinates: vec3a(16.5, 0.0, 0.0),
+            rotation: vec3a(90.0, 90.0, 0.0),
+            material_index: 9,
+        },
+        ObjectCreation {
+            file_path: "./3D_models/Wall.stl".to_string(),
+            scale: 3.0,
+            coordinates: vec3a(13.7, -5.4, 0.0),
+            rotation: vec3a(0.0, 0.0, 0.0),
+            material_index: 11,
+        },
+        // ################# floor ####################
+        ObjectCreation {
+            file_path: "./3D_models/Wall.stl".to_string(),
+            scale: 200.0,
+            coordinates: vec3a(0.0, 7.05, 0.0),
+            rotation: vec3a(0.0, 0.0, 0.0),
+            material_index: 1,
+        },
+    ]);
 
     RenderScene {
-        materials: vec![shiny_green, rough_blue, glossy_pink, shiny_orange, cool_red],
-        spheres: vec![sphere_a, sphere_b, shiny_sphere, floor],
+        materials: vec![
+            shiny_green,
+            rough_blue,
+            glossy_pink,
+            shiny_orange,
+            cool_red,
+            shiny_white,
+            wall_1,
+            wall_2,
+            wall_3,
+            wall_4,
+            wall_5,
+            wall_6,
+            wall_7,
+        ],
+        spheres: vec![sphere_a, sphere_b, shiny_sphere],
         objects: object_vec,
         sky_color: [0., 0.04, 0.1],
     }
@@ -183,6 +345,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         .map(|obj: &SceneObject| obj.object_triangles.len())
         .sum::<usize>() as u32;
 
+    dbg!(triangle_count);
+    dbg!(scene.objects.len());
+
     // Create uniform buffer
     let params = Params {
         width: size.width,
@@ -190,7 +355,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         sky_color: scene.sky_color,
         accumulate: 1,
         sphere_count: scene.spheres.len() as u32,
-        triangle_count: triangle_count as u32,
+        object_count: scene.objects.len() as u32,
     };
 
     let (mut scene_renderer, compute_bindgroup_layout, compute_bind_group) =
@@ -752,7 +917,7 @@ fn create_ui(
         .resizable(false)
         .frame(transparent_frame)
         .show(&egui_context, |ui| {
-            ui.set_max_width(100.0);
+            ui.set_max_width(160.0);
 
             ui.label(format!("fps: {}", compute_per_second));
 
@@ -770,8 +935,7 @@ fn create_ui(
                         &mut screne_renderer.material_index,
                         0..=(screne_renderer.scene.materials.len() - 1),
                     )
-                    .integer()
-                    .show_value(false),
+                    .integer(),
                 );
 
                 ui.vertical_centered_justified(|ui: &mut egui::Ui| {
@@ -849,17 +1013,16 @@ fn create_ui(
 
                 ui.add_space(30.0);
 
-                ui.label("selected object:");
-                ui.add(
-                    egui::Slider::new(
-                        &mut screne_renderer.object_index,
-                        0..=(screne_renderer.scene.objects.len() - 1),
-                    )
-                    .integer()
-                    .show_value(false),
-                );
-
                 ui.vertical_centered_justified(|ui: &mut egui::Ui| {
+                    ui.label("selected object:");
+                    ui.add(
+                        egui::Slider::new(
+                            &mut screne_renderer.object_index,
+                            0..=(screne_renderer.scene.objects.len() - 1),
+                        )
+                        .integer(),
+                    );
+
                     let current_object =
                         &mut screne_renderer.scene.objects[screne_renderer.object_index];
 
@@ -883,7 +1046,7 @@ fn create_ui(
                             .add(
                                 DragValue::new(&mut coordinates[1])
                                     .speed(0.1)
-                                    .clamp_range(-200.0..=0.0)
+                                    .clamp_range(-200.0..=10.0)
                                     .prefix("Y: "),
                             )
                             .changed()
@@ -990,80 +1153,77 @@ fn create_ui(
                     interacted = true;
                 };
 
-                // len - 1 because the last sphere is the floor sphere
-                let sphere_count = screne_renderer.scene.spheres.len();
-                for i in 0..sphere_count {
-                    let floor_sphere = i == (sphere_count - 1);
+                ui.label("selected sphere:");
+                ui.add(
+                    egui::Slider::new(
+                        &mut screne_renderer.sphere_index,
+                        0..=(screne_renderer.scene.spheres.len() - 1),
+                    )
+                    .integer(),
+                );
 
-                    let current_sphere = &mut screne_renderer.scene.spheres[i];
-                    let num = i + 1;
+                let current_sphere =
+                    &mut screne_renderer.scene.spheres[screne_renderer.sphere_index];
 
-                    if !floor_sphere {
-                        ui.label(format!("sphere {num} values"));
-                    }
-                    // X Y Z sliders
-                    if !floor_sphere {
-                        let sphere_position = &mut current_sphere.position;
+                // X Y Z sliders
 
-                        ui.horizontal(|ui| {
-                            if ui
-                                .add(
-                                    DragValue::new(&mut sphere_position[0])
-                                        .speed(0.1)
-                                        .clamp_range(-200.0..=200.0)
-                                        .prefix("X: "),
-                                )
-                                .changed()
-                            {
-                                interacted = true;
-                            };
+                let sphere_position = &mut current_sphere.position;
 
-                            if ui
-                                .add(
-                                    DragValue::new(&mut sphere_position[1])
-                                        .speed(0.1)
-                                        .clamp_range(-200.0..=0.0)
-                                        .prefix("Y: "),
-                                )
-                                .changed()
-                            {
-                                interacted = true;
-                            };
-                            if ui
-                                .add(
-                                    DragValue::new(&mut sphere_position[2])
-                                        .speed(0.1)
-                                        .clamp_range(-200.0..=200.0)
-                                        .prefix("Z: "),
-                                )
-                                .changed()
-                            {
-                                interacted = true;
-                            };
-                        });
-                    }
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(
+                            DragValue::new(&mut sphere_position[0])
+                                .speed(0.1)
+                                .clamp_range(-200.0..=200.0)
+                                .prefix("X: "),
+                        )
+                        .changed()
+                    {
+                        interacted = true;
+                    };
 
-                    // sliders for radius
-                    ui.vertical_centered_justified(|ui: &mut egui::Ui| {
-                        if !floor_sphere {
-                            let sphere_radius = &mut current_sphere.radius;
+                    if ui
+                        .add(
+                            DragValue::new(&mut sphere_position[1])
+                                .speed(0.1)
+                                .clamp_range(-200.0..=0.0)
+                                .prefix("Y: "),
+                        )
+                        .changed()
+                    {
+                        interacted = true;
+                    };
+                    if ui
+                        .add(
+                            DragValue::new(&mut sphere_position[2])
+                                .speed(0.1)
+                                .clamp_range(-200.0..=200.0)
+                                .prefix("Z: "),
+                        )
+                        .changed()
+                    {
+                        interacted = true;
+                    };
+                });
 
-                            if ui
-                                .add(
-                                    DragValue::new(sphere_radius)
-                                        .speed(0.01)
-                                        .clamp_range(0.1..=50.0)
-                                        .prefix("radius: "),
-                                )
-                                .changed()
-                            {
-                                interacted = true;
-                            };
-                        }
-                    });
+                // sliders for radius
+                ui.vertical_centered_justified(|ui: &mut egui::Ui| {
+                    let sphere_radius = &mut current_sphere.radius;
 
-                    ui.add_space(15.0);
-                }
+                    if ui
+                        .add(
+                            DragValue::new(sphere_radius)
+                                .speed(0.01)
+                                .clamp_range(0.1..=50.0)
+                                .prefix("radius: "),
+                        )
+                        .changed()
+                    {
+                        interacted = true;
+                    };
+                });
+
+                ui.add_space(15.0);
             });
         });
 

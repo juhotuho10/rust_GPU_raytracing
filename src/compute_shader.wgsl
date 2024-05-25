@@ -7,7 +7,7 @@ struct Params {
     accumulation_index: u32,
     accumulate: u32,
     sphere_count: u32,   
-    triangle_count: u32, 
+    object_count: u32, 
 };
 
 
@@ -78,11 +78,11 @@ struct Ray {
 @group(0) @binding(1) var<storage, read> camera_rays: array<vec3<f32>>;
 @group(0) @binding(2) var<storage, read_write> output_data: array<u32>;
 @group(0) @binding(3) var<uniform> ray_camera: RayCamera;
-@group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, 5>;
-@group(0) @binding(5) var<uniform> sphere_array: array<SceneSphere, 4>;
+@group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, 13>;
+@group(0) @binding(5) var<uniform> sphere_array: array<SceneSphere, 3>;
 @group(0) @binding(6) var<storage, read_write> accumulation_data: array<vec3<f32>>;
-@group(0) @binding(7) var<storage, read> triangle_array: array<SceneTriangle, 408>;
-@group(0) @binding(8) var<uniform> object_array: array<ObjectInfo, 2>;
+@group(0) @binding(7) var<storage, read> triangle_array: array<SceneTriangle, 516>;
+@group(0) @binding(8) var<uniform> object_array: array<ObjectInfo, 11>;
 
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -290,7 +290,7 @@ fn check_triangles(ray: Ray) -> HitPayload{
     var closest_distance = F32_MAX;
     var closest_hitpayload: HitPayload = miss();
 
-    for (var object_index: u32 = 0; object_index < 2; object_index = object_index + 1) {
+    for (var object_index: u32 = 0; object_index < params.object_count; object_index = object_index + 1) {
         let object_info: ObjectInfo = object_array[object_index];
 
         if !ray_in_bounds(ray, object_info.min_bounds, object_info.max_bounds){

@@ -5,23 +5,31 @@ use std::io::BufReader;
 
 use std::f32::consts::PI;
 
-pub fn load_stl_files(
-    file_names: &[&str],
-    scales: &[f32],
-    transformations: &[Vec3A],
-) -> Vec<SceneObject> {
+pub struct ObjectCreation {
+    pub file_path: String,
+    pub scale: f32,
+    pub coordinates: Vec3A,
+    pub rotation: Vec3A,
+    pub material_index: u32,
+}
+
+pub fn load_stl_files(object_data_vec: &[ObjectCreation]) -> Vec<SceneObject> {
     let mut triangle_count = 0;
     let mut scene_object_vec = vec![];
 
-    for i in 0..file_names.len() {
-        let new_obj =
-            SceneObject::new(file_names[i], scales[i], transformations[i], triangle_count);
+    for obj_data in object_data_vec {
+        let new_obj = SceneObject::new(
+            &obj_data.file_path,
+            obj_data.scale,
+            obj_data.coordinates,
+            obj_data.rotation,
+            obj_data.material_index,
+            triangle_count,
+        );
 
         triangle_count += new_obj.object_triangles.len() as u32;
         scene_object_vec.push(new_obj);
     }
-
-    dbg!(triangle_count);
 
     scene_object_vec
 }
@@ -34,6 +42,7 @@ pub struct SceneObject {
     pub scale: f32,
     pub transformation: Vec3A,
     pub center_location: Vec3A,
+    pub material_index: u32,
     pub object_info: ObjectInfo,
     pub object_triangles: Vec<SceneTriangle>,
 }
@@ -43,6 +52,8 @@ impl SceneObject {
         filepath: &str,
         scale: f32,
         transformation: Vec3A,
+        rotation: Vec3A,
+        material_index: u32,
         starting_triangle_index: u32,
     ) -> SceneObject {
         // Open the STL file
@@ -61,7 +72,7 @@ impl SceneObject {
             .map(|&vertex| vec3a(vertex[0], vertex[1], vertex[2]))
             .collect();
 
-        let points = normalize_model(original_points, vec3a(90.0, 0.0, 0.0));
+        let points = normalize_model(original_points, rotation);
 
         let scaled_points = scale_model(points, scale);
 
@@ -84,7 +95,7 @@ impl SceneObject {
             .collect();
 
         // Process the triangles
-        let triangles = generate_triangles(&point_indexes, &transformed_points);
+        let triangles = generate_triangles(&point_indexes, &transformed_points, material_index);
 
         let object_info = ObjectInfo {
             min_bounds: min_coords.into(),
@@ -102,6 +113,7 @@ impl SceneObject {
             rotation: Vec3A::ZERO,
             transformation: total_transformation,
             center_location,
+            material_index,
             object_info,
             object_triangles: triangles,
         }
@@ -121,8 +133,11 @@ impl SceneObject {
         self.object_info.min_bounds = min_coords.into();
         self.object_info.max_bounds = max_coords.into();
 
-        let triangles: Vec<SceneTriangle> =
-            generate_triangles(&self.point_indexes, &transformed_points);
+        let triangles: Vec<SceneTriangle> = generate_triangles(
+            &self.point_indexes,
+            &transformed_points,
+            self.material_index,
+        );
 
         self.object_triangles = triangles;
     }
@@ -142,12 +157,13 @@ impl SceneObject {
 fn generate_triangles(
     point_indexes: &[[usize; 3]],
     transformed_points: &[Vec3A],
+    material_index: u32,
 ) -> Vec<SceneTriangle> {
     let triangles: Vec<SceneTriangle> = point_indexes
         .iter()
         .map(|indexes| {
             SceneTriangle::new(
-                4,
+                material_index,
                 transformed_points[indexes[0]],
                 transformed_points[indexes[1]],
                 transformed_points[indexes[2]],

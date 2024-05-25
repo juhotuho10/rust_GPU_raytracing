@@ -9,7 +9,7 @@ pub struct Params {
     pub accumulation_index: u32, // u32, aligned to 4 bytes
     pub accumulate: u32,         // u32, aligned to 4 bytes
     pub sphere_count: u32,       // u32, aligned to 4 bytes
-    pub triangle_count: u32,     // u32, aligned to 4 bytes
+    pub object_count: u32,       // u32, aligned to 4 bytes
 }
 
 #[repr(C)]

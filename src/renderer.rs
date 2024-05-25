@@ -24,6 +24,7 @@ pub struct Renderer {
     pub accumulate: bool,
     pub material_index: usize,
     pub object_index: usize,
+    pub sphere_index: usize,
     accumulation_index: u32,
     buffers: buffers::DataBuffers,
 }
@@ -58,6 +59,7 @@ impl Renderer {
             accumulate,
             material_index: 0,
             object_index: 0,
+            sphere_index: 0,
             accumulation_index: 1,
             buffers,
         };
@@ -114,7 +116,7 @@ impl Renderer {
             accumulation_index: self.accumulation_index,
             accumulate: self.accumulate as u32,
             sphere_count: self.scene.spheres.len() as u32,
-            triangle_count: self.get_triangle_count(),
+            object_count: self.scene.objects.len() as u32,
         };
 
         self.buffers.reset_accumulation(device, queue, &[params]);
@@ -161,7 +163,7 @@ impl Renderer {
                 accumulation_index: self.accumulation_index,
                 accumulate: self.accumulate as u32,
                 sphere_count: self.scene.spheres.len() as u32,
-                triangle_count: self.get_triangle_count(),
+                object_count: self.scene.objects.len() as u32,
             };
 
             self.buffers.update_accumulation(queue, &[params]);
@@ -227,14 +229,6 @@ impl Renderer {
 
         // bytes per row
         (value + alignment - 1) & !(alignment - 1)
-    }
-
-    pub fn get_triangle_count(&self) -> u32 {
-        self.scene
-            .objects
-            .iter()
-            .map(|obj: &SceneObject| obj.object_triangles.len())
-            .sum::<usize>() as u32
     }
 }
 
