@@ -95,13 +95,15 @@ impl SceneObject {
             .collect();
 
         // Process the triangles
-        let triangles = generate_triangles(&point_indexes, &transformed_points, material_index);
+        let triangles = generate_triangles(&point_indexes, &transformed_points);
 
         let object_info = ObjectInfo {
             min_bounds: min_coords.into(),
             first_triangle_index: starting_triangle_index,
             max_bounds: max_coords.into(),
             triangle_count: triangles.len() as u32,
+            material_index,
+            _padding: [0; 12],
         };
 
         let center_location = (min_coords + max_coords) / 2.0;
@@ -133,11 +135,8 @@ impl SceneObject {
         self.object_info.min_bounds = min_coords.into();
         self.object_info.max_bounds = max_coords.into();
 
-        let triangles: Vec<SceneTriangle> = generate_triangles(
-            &self.point_indexes,
-            &transformed_points,
-            self.material_index,
-        );
+        let triangles: Vec<SceneTriangle> =
+            generate_triangles(&self.point_indexes, &transformed_points);
 
         self.object_triangles = triangles;
     }
@@ -157,13 +156,11 @@ impl SceneObject {
 fn generate_triangles(
     point_indexes: &[[usize; 3]],
     transformed_points: &[Vec3A],
-    material_index: u32,
 ) -> Vec<SceneTriangle> {
     let triangles: Vec<SceneTriangle> = point_indexes
         .iter()
         .map(|indexes| {
             SceneTriangle::new(
-                material_index,
                 transformed_points[indexes[0]],
                 transformed_points[indexes[1]],
                 transformed_points[indexes[2]],

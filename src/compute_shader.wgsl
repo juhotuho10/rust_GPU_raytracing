@@ -1,6 +1,17 @@
 const F32_MAX: f32 = 3.4028235e+38;
 const U32_MAX: u32 = 4294967295u;
 
+
+@group(0) @binding(0) var<storage, read> params: Params;
+@group(0) @binding(1) var<storage, read> camera_rays: array<vec3<f32>>;
+@group(0) @binding(2) var<storage, read_write> output_data: array<u32>;
+@group(0) @binding(3) var<uniform> ray_camera: RayCamera;
+@group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, 6>;
+@group(0) @binding(5) var<uniform> sphere_array: array<SceneSphere, 3>;
+@group(0) @binding(6) var<storage, read_write> accumulation_data: array<vec3<f32>>;
+@group(0) @binding(7) var<storage, read> triangle_array: array<SceneTriangle, 420>;
+@group(0) @binding(8) var<uniform> object_array: array<ObjectInfo, 3>;
+
 struct Params {
     sky_color: vec3<f32>,
     width: u32,
@@ -45,15 +56,15 @@ struct SceneSphere {
 
 struct SceneTriangle {
     a: vec3<f32>,
-    material_index: u32,
-    edge_ab: vec3<f32>,
     _padding: u32,
-    edge_ac: vec3<f32>,
+    edge_ab: vec3<f32>,
     _padding2: u32,
-    calc_normal: vec3<f32>,
+    edge_ac: vec3<f32>,
     _padding3: u32,
-    face_normal: vec3<f32>,
+    calc_normal: vec3<f32>,
     _padding4: u32,
+    face_normal: vec3<f32>,
+    _padding5: u32,
     // explicit padding to match 16 byte alignment 
 }
 
@@ -62,13 +73,17 @@ struct ObjectInfo {
     first_triangle_index: u32,
     max_bounds: vec3<f32>,
     triangle_count: u32,
+    material_index: u32,
+    _padding1: u32,
+    _padding2: u32,
+    _padding3: u32,
 }
 
 
 struct HitPayload {
     hit_distance: f32,
     world_position: vec3<f32>,
-    world_normal: vec3<f32>,
+    hitside_normal: vec3<f32>,
     material_index: u32,
     front_face: bool,
 }
@@ -79,15 +94,6 @@ struct Ray {
 }
 
 
-@group(0) @binding(0) var<storage, read> params: Params;
-@group(0) @binding(1) var<storage, read> camera_rays: array<vec3<f32>>;
-@group(0) @binding(2) var<storage, read_write> output_data: array<u32>;
-@group(0) @binding(3) var<uniform> ray_camera: RayCamera;
-@group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, 13>;
-@group(0) @binding(5) var<uniform> sphere_array: array<SceneSphere, 3>;
-@group(0) @binding(6) var<storage, read_write> accumulation_data: array<vec3<f32>>;
-@group(0) @binding(7) var<storage, read> triangle_array: array<SceneTriangle, 516>;
-@group(0) @binding(8) var<uniform> object_array: array<ObjectInfo, 11>;
 
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -181,8 +187,8 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
         let material_index: u32 = hit_payload.material_index;
         let current_material: SceneMaterial = material_array[material_index];
 
-        let diffuse_direction: vec3<f32> = normalize(hit_payload.world_normal + random_normal_scaler(&seed));
-        let specular_direction: vec3<f32> = reflect(ray.direction, hit_payload.world_normal);
+        let diffuse_direction: vec3<f32> = normalize(hit_payload.hitside_normal + random_normal_scaler(&seed));
+        let specular_direction: vec3<f32> = reflect(ray.direction, hit_payload.hitside_normal);
 
         let emitted_light = current_material.albedo * current_material.emission_power;
         light += emitted_light * light_contribution;
@@ -197,37 +203,32 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
                 refraction_index = 1.0 /refraction_index;
             }
 
-            let cos_theta: f32 = min(dot(-ray.direction, hit_payload.world_normal), 1.0);
+            let cos_theta: f32 = min(dot(-ray.direction, hit_payload.hitside_normal), 1.0);
 
             let sin_theta: f32 = sqrt(1.0 - cos_theta * cos_theta);
 
             let reflects: bool = refraction_index * sin_theta > 1.0;
 
-            let reflect_percentage: f32 = reflect_percentage(cos_theta, refraction_index);
+            let specular_percentage: f32 = specular_percentage(cos_theta, refraction_index);
 
-            if reflects || (current_material.specular * reflect_percentage) > random(&seed){
+            if reflects || (current_material.specular * specular_percentage) > random(&seed){
                 // specular reflection, bounces off the glass
                 
                 ray.direction = lerp(specular_direction, diffuse_direction, current_material.specular_scatter);
-                ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
+                ray.origin = hit_payload.world_position + hit_payload.hitside_normal * 0.0001;
 
             } else { 
                 // refraction, goes through the glass
 
-                let ray_perpendicular: vec3<f32> =  refraction_index * (ray.direction + cos_theta * hit_payload.world_normal);
-
-                let len_squared = length(ray_perpendicular) * length(ray_perpendicular);
-                let ray_parallel: vec3<f32> = -sqrt(abs(1.0 - len_squared)) * hit_payload.world_normal;
-
-                let refraction_direction: vec3<f32> = ray_perpendicular + ray_parallel;
+                let refraction_direction: vec3<f32> = refract(ray.direction, hit_payload.hitside_normal, cos_theta, refraction_index);
                 
                 // normal roughness calculation in wayy to harsh for glass, 1/10 is plenty
                 ray.direction = lerp(refraction_direction, diffuse_direction, current_material.roughness / 10.0);
 
                 // ray goes through the material so we want it to be set on the opposite side of the hitside normal
-                ray.origin = hit_payload.world_position - hit_payload.world_normal * 0.0001;
+                ray.origin = hit_payload.world_position - hit_payload.hitside_normal * 0.0001;
 
-                light_contribution *= current_material.albedo;
+                light_contribution *= current_material.albedo; 
             }
 
         }else{
@@ -242,7 +243,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
                 light_contribution *= current_material.albedo;
             }
 
-            ray.origin = hit_payload.world_position + hit_payload.world_normal * 0.0001;
+            ray.origin = hit_payload.world_position + hit_payload.hitside_normal * 0.0001;
 
         }
 
@@ -250,8 +251,19 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
     return light;
 }
 
+fn refract(ray_direction:vec3<f32>, hitside_normal: vec3<f32>, cos_theta: f32, refraction_index: f32) -> vec3<f32>{
+    // the ray goes through the glass and the direction is changed based on refraction index
 
-fn reflect_percentage(cos_theta: f32, refraction_index: f32) -> f32{
+    let ray_perpendicular: vec3<f32> =  refraction_index * (ray_direction + cos_theta * hitside_normal);
+
+    let len_squared = length(ray_perpendicular) * length(ray_perpendicular);
+    let ray_parallel: vec3<f32> = -sqrt(abs(1.0 - len_squared)) * hitside_normal;
+
+    return ray_perpendicular + ray_parallel;
+}
+
+
+fn specular_percentage(cos_theta: f32, refraction_index: f32) -> f32{
     // Schlick's approximation for reflectance
     var refraction_0 = (1 - refraction_index) / (1 + refraction_index);
     refraction_0 = refraction_0 * refraction_0;
@@ -260,6 +272,7 @@ fn reflect_percentage(cos_theta: f32, refraction_index: f32) -> f32{
 }
 
 fn lerp(start: vec3<f32>, end: vec3<f32>, t: f32) -> vec3<f32>{
+    // smooth transition between 2 vectors from 0.0 to 1.0
     return start + (end - start) * t;
 }
 
@@ -332,6 +345,8 @@ fn check_spheres(ray: Ray) -> HitPayload{
 
 fn ray_in_bounds(ray: Ray, min_bounds: vec3<f32>, max_bounds: vec3<f32>) -> bool{
 
+    // quick check to see if the ray falls within the object bounds
+
     let inv_direction: vec3<f32> = 1 / ray.direction;
     let min_t: vec3<f32> = (min_bounds - ray.origin) * inv_direction;
     let max_t: vec3<f32> = (max_bounds - ray.origin) * inv_direction;
@@ -351,6 +366,7 @@ fn check_triangles(ray: Ray) -> HitPayload{
     for (var object_index: u32 = 0; object_index < params.object_count; object_index = object_index + 1) {
         let object_info: ObjectInfo = object_array[object_index];
 
+        // quick way to filter out objects that can't be hit with ray
         if !ray_in_bounds(ray, object_info.min_bounds, object_info.max_bounds){
             continue;
         }
@@ -363,13 +379,14 @@ fn check_triangles(ray: Ray) -> HitPayload{
 
             var front_face: bool;
 
-            var face_normal: vec3<f32> = tri.face_normal;
+            var hitside_normal: vec3<f32>;
 
             if determinant > 0.0 {
                 front_face = true;
+                hitside_normal = tri.face_normal;
             }else{
                 front_face = false;
-                face_normal = -face_normal;
+                hitside_normal = -tri.face_normal;
             }
 
             let inv_det: f32 = 1 / determinant;
@@ -409,8 +426,8 @@ fn check_triangles(ray: Ray) -> HitPayload{
             closest_hitpayload = HitPayload(
                 distance,
                 ray.origin + ray.direction * distance,
-                face_normal,
-                tri.material_index,
+                hitside_normal,
+                object_info.material_index,
                 front_face,
                 );
   
@@ -441,17 +458,17 @@ fn sphere_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
 
     let front_face = dot(ray.direction, outward_normal) < 0;
 
-    var normal: vec3<f32>;
+    var hitside_normal: vec3<f32>;
 
     if front_face{
-        normal = outward_normal;
+        hitside_normal = outward_normal;
     }else{
-        normal = -outward_normal;
+        hitside_normal = -outward_normal;
     }
 
     return HitPayload(hit_distance, 
     hit_point,
-    normal,
+    hitside_normal,
     closest_sphere.material_index,
     front_face,
     );

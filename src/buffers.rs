@@ -39,19 +39,19 @@ pub struct SceneSphere {
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SceneTriangle {
     a: [f32; 3],           //
-    material_index: u32,   // u32, aligned to 4 bytes
-    edge_ab: [f32; 3],     // vec3, aligned to 12 bytes
     _padding: [u8; 4],     // padding to ensure 16-byte alignment
-    edge_ac: [f32; 3],     // vec3, aligned to 12 bytes
+    edge_ab: [f32; 3],     // vec3, aligned to 12 bytes
     _padding2: [u8; 4],    // padding to ensure 16-byte alignment
-    calc_normal: [f32; 3], // vec3, aligned to 12 bytes
+    edge_ac: [f32; 3],     // vec3, aligned to 12 bytes
     _padding3: [u8; 4],    // padding to ensure 16-byte alignment
-    face_normal: [f32; 3], // vec3, aligned to 12 bytes
+    calc_normal: [f32; 3], // vec3, aligned to 12 bytes
     _padding4: [u8; 4],    // padding to ensure 16-byte alignment
+    face_normal: [f32; 3], // vec3, aligned to 12 bytes
+    _padding5: [u8; 4],    // padding to ensure 16-byte alignment
 }
 
 impl SceneTriangle {
-    pub fn new(material_index: u32, a: Vec3A, b: Vec3A, c: Vec3A) -> SceneTriangle {
+    pub fn new(a: Vec3A, b: Vec3A, c: Vec3A) -> SceneTriangle {
         // precalculations to save on compute
 
         let edge_ab = b - a;
@@ -62,15 +62,15 @@ impl SceneTriangle {
 
         SceneTriangle {
             a: a.into(),                     // vec3, aligned to 12 bytes
-            material_index,                  // u32, aligned to 4 bytes
-            edge_ab: edge_ab.into(),         // vec3, aligned to 12 bytes
             _padding: [0; 4],                // padding to ensure 16-byte alignment
-            edge_ac: edge_ac.into(),         // vec3, aligned to 12 bytes
+            edge_ab: edge_ab.into(),         // vec3, aligned to 12 bytes
             _padding2: [0; 4],               // padding to ensure 16-byte alignment
-            calc_normal: calc_normal.into(), // vec3, aligned to 12 bytes
+            edge_ac: edge_ac.into(),         // vec3, aligned to 12 bytes
             _padding3: [0; 4],               // padding to ensure 16-byte alignment
-            face_normal: face_normal.into(), // vec3, aligned to 12 bytes
+            calc_normal: calc_normal.into(), // vec3, aligned to 12 bytes
             _padding4: [0; 4],               // padding to ensure 16-byte alignment
+            face_normal: face_normal.into(), // vec3, aligned to 12 bytes
+            _padding5: [0; 4],               // padding to ensure 16-byte alignment
         }
     }
 }
@@ -95,6 +95,8 @@ pub struct ObjectInfo {
     pub first_triangle_index: u32, // f32, aligned to 4 bytes
     pub max_bounds: [f32; 3],      // vec3, aligned to 12 bytes
     pub triangle_count: u32,       // f32, aligned to 4 bytes
+    pub material_index: u32,       // f32, aligned to 4 bytes
+    pub _padding: [u8; 12],        // padding to ensure 16-byte alignment
 }
 
 pub struct DataBuffers {

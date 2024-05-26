@@ -95,7 +95,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         .sum::<usize>() as u32;
 
     dbg!(triangle_count);
+    dbg!(scene.spheres.len());
     dbg!(scene.objects.len());
+    dbg!(scene.materials.len());
 
     // Create uniform buffer
     let params = Params {
@@ -651,7 +653,7 @@ fn create_ui(
     let egui_context = platform.context();
 
     let mut style = (*egui_context.style()).clone();
-    style.visuals.override_text_color = Some(Color32::from_rgb(220, 220, 220));
+    style.visuals.override_text_color = Some(Color32::from_rgb(200, 200, 200));
     egui_context.set_style(style);
 
     let transparent_frame = Frame::none().fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200));
@@ -667,6 +669,15 @@ fn create_ui(
             ui.label(format!("fps: {}", compute_per_second));
 
             ui.vertical_centered(|ui| {
+                ui.label("sky color:");
+                if ui
+                    .color_edit_button_rgb(&mut screne_renderer.scene.sky_color)
+                    .on_hover_text("color")
+                    .changed()
+                {
+                    interacted = true;
+                };
+
                 if ui
                     .checkbox(&mut screne_renderer.accumulate, "light accumulation")
                     .changed()
@@ -674,71 +685,7 @@ fn create_ui(
                     interacted = true;
                 };
 
-                ui.label("selected material:");
-                ui.add(
-                    egui::Slider::new(
-                        &mut screne_renderer.material_index,
-                        0..=(screne_renderer.scene.materials.len() - 1),
-                    )
-                    .integer(),
-                );
-
-                ui.vertical_centered_justified(|ui: &mut egui::Ui| {
-                    let current_material =
-                        &mut screne_renderer.scene.materials[screne_renderer.material_index];
-
-                    let color = &mut current_material.albedo;
-
-                    let emission_power = &mut current_material.emission_power;
-
-                    ui.horizontal(|ui| {
-                        if ui
-                            .color_edit_button_rgb(color)
-                            .on_hover_text("color")
-                            .changed()
-                        {
-                            interacted = true;
-                        };
-                    });
-
-                    if create_drag_value!(ui, emission_power, 0.2, 0.0..=200.0, "emission power:") {
-                        interacted = true;
-                    }
-
-                    let material_roughness = &mut current_material.roughness;
-
-                    if create_drag_value!(ui, material_roughness, 0.01, 0.0..=1.0, "roughness:") {
-                        interacted = true;
-                    }
-
-                    let material_specular = &mut current_material.specular;
-
-                    if create_drag_value!(ui, material_specular, 0.01, 0.0..=1.0, "specular:") {
-                        interacted = true;
-                    }
-
-                    let specular_scatter = &mut current_material.specular_scatter;
-
-                    if create_drag_value!(ui, specular_scatter, 0.01, 0.0..=0.5, "specular scatter")
-                    {
-                        interacted = true;
-                    }
-
-                    let glass_refraction = &mut current_material.glass;
-
-                    if create_drag_value!(ui, glass_refraction, 0.01, 0.0..=1.0, "glass") {
-                        interacted = true;
-                    }
-
-                    let refraction_index = &mut current_material.refraction_index;
-
-                    if create_drag_value!(ui, refraction_index, 0.01, 0.0..=5.0, "refraction index")
-                    {
-                        interacted = true;
-                    }
-                });
-
-                ui.add_space(30.0);
+                ui.add_space(10.0);
 
                 ui.vertical_centered_justified(|ui: &mut egui::Ui| {
                     ui.label("selected object:");
@@ -811,18 +758,12 @@ fn create_ui(
                             interacted = true;
                         }
                     });
+
+                    let material_index: usize = current_object.material_index as usize;
+                    ui_material_selection(screne_renderer, material_index, ui, &mut interacted);
                 });
 
-                let sky_color = &mut screne_renderer.scene.sky_color;
-
-                ui.label("sky color:");
-                if ui
-                    .color_edit_button_rgb(sky_color)
-                    .on_hover_text("color")
-                    .changed()
-                {
-                    interacted = true;
-                };
+                ui.add_space(30.0);
 
                 ui.label("selected sphere:");
                 ui.add(
@@ -863,7 +804,8 @@ fn create_ui(
                     }
                 });
 
-                ui.add_space(15.0);
+                let material_index: usize = current_sphere.material_index as usize;
+                ui_material_selection(screne_renderer, material_index, ui, &mut interacted);
             });
         });
 
@@ -872,6 +814,64 @@ fn create_ui(
     }
 
     egui_context.end_frame()
+}
+
+fn ui_material_selection(
+    screne_renderer: &mut Renderer,
+    material_index: usize,
+    ui: &mut egui::Ui,
+    interacted: &mut bool,
+) {
+    ui.vertical_centered_justified(|ui: &mut egui::Ui| {
+        ui.label("object material:");
+        let current_material = &mut screne_renderer.scene.materials[material_index];
+
+        let color = &mut current_material.albedo;
+
+        let emission_power = &mut current_material.emission_power;
+
+        if ui
+            .color_edit_button_rgb(color)
+            .on_hover_text("color")
+            .changed()
+        {
+            *interacted = true;
+        };
+
+        if create_drag_value!(ui, emission_power, 0.2, 0.0..=200.0, "emission power:") {
+            *interacted = true;
+        }
+
+        let material_roughness = &mut current_material.roughness;
+
+        if create_drag_value!(ui, material_roughness, 0.01, 0.0..=1.0, "roughness:") {
+            *interacted = true;
+        }
+
+        let material_specular = &mut current_material.specular;
+
+        if create_drag_value!(ui, material_specular, 0.01, 0.0..=1.0, "specular:") {
+            *interacted = true;
+        }
+
+        let specular_scatter = &mut current_material.specular_scatter;
+
+        if create_drag_value!(ui, specular_scatter, 0.01, 0.0..=0.5, "specular scatter") {
+            *interacted = true;
+        }
+
+        let glass_refraction = &mut current_material.glass;
+
+        if create_drag_value!(ui, glass_refraction, 0.01, 0.0..=1.0, "glass") {
+            *interacted = true;
+        }
+
+        let refraction_index = &mut current_material.refraction_index;
+
+        if create_drag_value!(ui, refraction_index, 0.01, 0.0..=5.0, "refraction index") {
+            *interacted = true;
+        }
+    });
 }
 
 // simple macro for makíng the UI more compact
