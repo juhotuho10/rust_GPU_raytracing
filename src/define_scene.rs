@@ -65,7 +65,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     };
 
     let shiny_white = SceneMaterial {
-        albedo: [0.9, 0.9, 0.9],
+        albedo: [1.0, 1.0, 1.0],
         roughness: 0.7,
         emission_power: 0.0,
         specular: 0.3,

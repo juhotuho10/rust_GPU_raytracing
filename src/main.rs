@@ -40,6 +40,8 @@ pub fn main() {
 
     let builder = winit::window::WindowBuilder::new();
 
+    // window width is set at 1600, because GPU buffer requires n * 256 bytes (n * 64 pixels * 4*u8 colors ) for every horisontal row,
+    // changing it to not be a multiple of 64 requires implementing buffer values when getting colors from the GPU
     let window_size = PhysicalSize::new(1600, 900);
 
     let window = builder
@@ -56,8 +58,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut movement_mode = false;
 
     let mut size = window.inner_size();
-    size.width = size.width.max(1);
-    size.height = size.height.max(1);
 
     let mut mouse_resting_position = egui::pos2(
         (size.width as f32 / 2.).round(),
@@ -110,7 +110,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     };
 
     let (mut scene_renderer, compute_bindgroup_layout, compute_bind_group) =
-        Renderer::new(camera, scene, &device, &size, params);
+        Renderer::new(camera, scene, &device, &queue, size, params);
 
     // ################################ GPU COMPUTE PIPELINE #########################################
 
@@ -228,7 +228,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 (size.height as f32 / 2.).round(),
                             );
 
-                            scene_renderer.on_resize(&size, &device, &queue);
+                            scene_renderer.on_resize(&size);
 
                             texture = create_texture(&device, size);
 
@@ -313,12 +313,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             {
                                 compute_timer = Instant::now();
                                 compute_counter += 5;
-                                scene_renderer.compute_frame(
-                                    &device,
-                                    &queue,
-                                    &compute_pipeline,
-                                    &compute_bind_group,
-                                );
+                                scene_renderer
+                                    .compute_frame(&compute_pipeline, &compute_bind_group);
                             }
 
                             if fps_timer.elapsed().as_millis() > frametime_target {
@@ -373,8 +369,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 }
 
                                 let full_output = create_ui(
-                                    &device,
-                                    &queue,
                                     &mut platform,
                                     &mut scene_renderer,
                                     &compute_per_second,
@@ -425,12 +419,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 if movement_mode {
                                     let delta = current_mouse_pos - mouse_resting_position;
 
-                                    scene_renderer.on_update(
-                                        &device,
-                                        &queue,
-                                        delta,
-                                        &platform.context(),
-                                    );
+                                    scene_renderer.on_update(delta, &platform.context());
                                 }
 
                                 if platform
@@ -641,8 +630,6 @@ fn generate_instance() -> Instance {
 // ######################### UI CREATION ########################################
 
 fn create_ui(
-    device: &wgpu::Device,
-    queue: &Queue,
     platform: &mut Platform,
     screne_renderer: &mut Renderer,
     compute_per_second: &u32,
@@ -810,7 +797,7 @@ fn create_ui(
         });
 
     if interacted {
-        screne_renderer.update_scene(device, queue)
+        screne_renderer.update_scene()
     }
 
     egui_context.end_frame()

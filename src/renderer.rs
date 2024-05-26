@@ -18,9 +18,11 @@ pub struct RenderScene {
     pub sky_color: [f32; 3],
 }
 
-pub struct Renderer {
+pub struct Renderer<'a> {
     pub camera: Camera,
     pub scene: RenderScene,
+    pub device: &'a Device,
+    pub queue: &'a Queue,
     pub accumulate: bool,
     pub object_index: usize,
     pub sphere_index: usize,
@@ -28,14 +30,15 @@ pub struct Renderer {
     buffers: buffers::DataBuffers,
 }
 
-impl Renderer {
-    pub fn new(
+impl Renderer<'_> {
+    pub fn new<'a>(
         camera: Camera,
         scene: RenderScene,
-        device: &Device,
-        size: &winit::dpi::PhysicalSize<u32>,
+        device: &'a Device,
+        queue: &'a Queue,
+        size: winit::dpi::PhysicalSize<u32>,
         params: Params,
-    ) -> (Renderer, BindGroupLayout, BindGroup) {
+    ) -> (Renderer<'a>, BindGroupLayout, BindGroup) {
         let camera_rays = camera.recalculate_ray_directions();
         let accumulate = params.accumulate == 1;
 
@@ -43,7 +46,7 @@ impl Renderer {
 
         let (buffers, bind_group_layout, compute_bind_group) = buffers::DataBuffers::new(
             device,
-            size,
+            &size,
             &camera_rays,
             &scene.materials,
             &scene.spheres,
@@ -55,6 +58,8 @@ impl Renderer {
         let renderer = Renderer {
             camera,
             scene,
+            device,
+            queue,
             accumulate,
             object_index: 0,
             sphere_index: 0,
@@ -65,29 +70,17 @@ impl Renderer {
         (renderer, bind_group_layout, compute_bind_group)
     }
 
-    pub fn on_resize(
-        &mut self,
-        size: &winit::dpi::PhysicalSize<u32>,
-        device: &Device,
-        queue: &Queue,
-    ) {
+    pub fn on_resize(&mut self, size: &winit::dpi::PhysicalSize<u32>) {
         self.camera.on_resize(size.width, size.height);
 
-        self.reset_accumulation(device, queue)
+        self.reset_accumulation()
     }
 
-    pub fn on_update(
-        &mut self,
-        device: &Device,
-        queue: &Queue,
-        mouse_delta: egui::Vec2,
-
-        egui_context: &Context,
-    ) {
+    pub fn on_update(&mut self, mouse_delta: egui::Vec2, egui_context: &Context) {
         let moved = self.camera.on_update(mouse_delta, egui_context);
 
         if moved {
-            self.reset_accumulation(device, queue);
+            self.reset_accumulation();
             let new_rays = self.camera.recalculate_ray_directions();
 
             let new_camera = RayCamera {
@@ -95,17 +88,17 @@ impl Renderer {
                 _padding: [0; 4],
             };
 
-            queue.write_buffer(
+            self.queue.write_buffer(
                 &self.buffers.camera_buffer,
                 0,
                 bytemuck::cast_slice(&[new_camera]),
             );
 
-            self.buffers.update_ray_directions(queue, &new_rays);
+            self.buffers.update_ray_directions(self.queue, &new_rays);
         };
     }
 
-    pub fn reset_accumulation(&mut self, device: &Device, queue: &Queue) {
+    pub fn reset_accumulation(&mut self) {
         self.accumulation_index = 1;
 
         let params = Params {
@@ -117,38 +110,40 @@ impl Renderer {
             object_count: self.scene.objects.len() as u32,
         };
 
-        self.buffers.reset_accumulation(device, queue, &[params]);
+        self.buffers
+            .reset_accumulation(self.device, self.queue, &[params]);
     }
 
-    pub fn update_scene(&mut self, device: &Device, queue: &Queue) {
-        self.reset_accumulation(device, queue);
+    pub fn update_scene(&mut self) {
+        self.reset_accumulation();
 
         let new_spheres = &self.scene.spheres;
-        self.buffers.update_spheres(queue, new_spheres);
+        self.buffers.update_spheres(self.queue, new_spheres);
 
         for object in &mut self.scene.objects {
             object.update_triangles();
         }
         let (new_object_info, new_triangles) = get_triangle_data(&self.scene);
 
-        self.buffers.update_triangles(queue, &new_triangles);
+        self.buffers.update_triangles(self.queue, &new_triangles);
 
-        self.buffers.update_object_info(queue, &new_object_info);
+        self.buffers
+            .update_object_info(self.queue, &new_object_info);
 
         let new_materials = &self.scene.materials;
-        self.buffers.update_materials(queue, new_materials);
+        self.buffers.update_materials(self.queue, new_materials);
     }
 
     pub fn compute_frame(
         &mut self,
-        device: &Device,
-        queue: &Queue,
         compute_pipeline: &wgpu::ComputePipeline,
         compute_bind_group: &BindGroup,
     ) {
-        let mut compute_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Encoder"),
-        });
+        let mut compute_encoder =
+            self.device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Encoder"),
+                });
 
         // ###################################### update accumulation ########################################
         let width = self.camera.viewport_width;
@@ -164,7 +159,7 @@ impl Renderer {
                 object_count: self.scene.objects.len() as u32,
             };
 
-            self.buffers.update_accumulation(queue, &[params]);
+            self.buffers.update_accumulation(self.queue, &[params]);
 
             self.accumulation_index += 1;
         }
@@ -181,7 +176,7 @@ impl Renderer {
             compute_pass.dispatch_workgroups((width + 7) / 8, (height + 7) / 8, 1);
         }
 
-        queue.submit(Some(compute_encoder.finish()));
+        self.queue.submit(Some(compute_encoder.finish()));
 
         // ###################################### copying buffers to texture ########################################
     }
