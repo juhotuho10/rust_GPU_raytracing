@@ -65,6 +65,10 @@ struct SceneTriangle {
     _padding4: u32,
     face_normal: vec3<f32>,
     _padding5: u32,
+    min_bounds: vec3<f32>,
+    _padding6: u32,
+    max_bounds: vec3<f32>,
+    _padding7: u32,
     // explicit padding to match 16 byte alignment 
 }
 
@@ -374,6 +378,11 @@ fn check_triangles(ray: Ray) -> HitPayload{
         for (var i: u32 = 0; i < object_info.triangle_count; i = i + 1) {
             let triangle_index = object_info.first_triangle_index + i;
             let tri: SceneTriangle = triangle_array[triangle_index];
+
+            // quick way to filter out objects that can't be hit with ray
+            if !ray_in_bounds(ray, tri.min_bounds, tri.max_bounds){
+                continue;
+            }
             
             let determinant: f32 = -dot(ray.direction, tri.calc_normal);
 
