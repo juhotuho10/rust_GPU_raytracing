@@ -57,10 +57,10 @@ pub(crate) fn define_render_scene() -> RenderScene {
         albedo: [1.0, 0.0, 0.4],
         roughness: 0.9,
         emission_power: 0.0,
-        specular: 0.3,
-        specular_scatter: 0.0,
-        glass: 0.0,
-        refraction_index: 1.0,
+        specular: 0.5,
+        specular_scatter: 0.4,
+        glass: 1.0,
+        refraction_index: 1.5,
         _padding: [0; 12],
     };
 
@@ -68,10 +68,10 @@ pub(crate) fn define_render_scene() -> RenderScene {
         albedo: [1.0, 1.0, 1.0],
         roughness: 0.7,
         emission_power: 0.0,
-        specular: 0.3,
-        specular_scatter: 0.05,
-        glass: 0.0,
-        refraction_index: 1.0,
+        specular: 0.5,
+        specular_scatter: 0.1,
+        glass: 1.0,
+        refraction_index: 1.5,
         _padding: [0; 12],
     };
 
@@ -107,7 +107,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
         ObjectCreation {
             file_path: "./3D_models/Knight.stl".to_string(),
             scale: 1.0,
-            coordinates: vec3a(0.0, 0.0, 3.0),
+            coordinates: vec3a(2.0, 0.0, 2.0),
             rotation: vec3a(90.0, 0.0, 0.0),
             material_index: 5,
         },
@@ -115,7 +115,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
         ObjectCreation {
             file_path: "./3D_models/Wall.stl".to_string(),
             scale: 200.0,
-            coordinates: vec3a(0.0, 7.05, 0.0),
+            coordinates: vec3a(0.0, 7.066, 0.0),
             rotation: vec3a(0.0, 0.0, 0.0),
             material_index: 1,
         },

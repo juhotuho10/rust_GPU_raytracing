@@ -118,6 +118,7 @@ impl DataBuffers {
     pub fn new(
         device: &wgpu::Device,
         size: &winit::dpi::PhysicalSize<u32>,
+        camera: RayCamera,
         camera_rays: &[Ray],
         material_array: &[SceneMaterial],
         sphere_array: &[SceneSphere],
@@ -147,12 +148,6 @@ impl DataBuffers {
             contents: bytemuck::cast_slice(params),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
-
-        // Create uniform buffer
-        let camera = RayCamera {
-            origin: [-7.0, -7.0, 25.],
-            _padding: [0; 4],
-        };
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),

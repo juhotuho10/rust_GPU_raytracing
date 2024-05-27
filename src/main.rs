@@ -196,9 +196,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         .run(/*move*/ |event, target| {
             // Have the closure take ownership of the resources.
 
-            // `event_loop.run` never returns, therefore we must do this to ensure
-            // the resources are properly cleaned up.
-
             platform.handle_event(&event);
             let _ = (&instance, &pipeline_layout);
 
@@ -236,7 +233,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 create_device_bindgroup(&device, &texture, &sampler);
 
                             surface.configure(&device, &surface_config);
-                            // On macos the window needs to be redrawn manually after resizing
 
                             window.request_redraw();
                         }

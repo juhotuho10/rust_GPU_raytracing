@@ -44,9 +44,15 @@ impl Renderer<'_> {
 
         let (object_info_vec, triangles) = get_triangle_data(&scene);
 
+        let ray_camera: RayCamera = RayCamera {
+            origin: camera.position.into(),
+            _padding: [0; 4],
+        };
+
         let (buffers, bind_group_layout, compute_bind_group) = buffers::DataBuffers::new(
             device,
             &size,
+            ray_camera,
             &camera_rays,
             &scene.materials,
             &scene.spheres,
@@ -188,7 +194,7 @@ impl Renderer<'_> {
 
         let bytes_per_row = self.calculate_bytes_per_row(width);
 
-        // Copy the output buffer to the texture
+        // Copy the GPU output buffer to the texture to be displayed
         encoder.copy_buffer_to_texture(
             wgpu::ImageCopyBuffer {
                 buffer: &self.buffers.output_buffer,

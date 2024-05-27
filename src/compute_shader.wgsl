@@ -354,7 +354,7 @@ fn ray_in_bounds(ray: Ray, min_bounds: vec3<f32>, max_bounds: vec3<f32>) -> bool
     let t2: vec3<f32> = max(min_t, max_t);
     let near_t: f32 = max(max(t1.x, t1.y), t1.z);
     let far_t: f32 = min(min(t2.x, t2.y), t2.z);
-    return near_t <= far_t;
+    return near_t <= far_t && far_t >= 0.0;
     
 }
 
@@ -377,25 +377,13 @@ fn check_triangles(ray: Ray) -> HitPayload{
             
             let determinant: f32 = -dot(ray.direction, tri.calc_normal);
 
-            var front_face: bool;
-
-            var hitside_normal: vec3<f32>;
-
-            if determinant > 0.0 {
-                front_face = true;
-                hitside_normal = tri.face_normal;
-            }else{
-                front_face = false;
-                hitside_normal = -tri.face_normal;
-            }
-
             let inv_det: f32 = 1 / determinant;
             
             let ao: vec3<f32> = ray.origin - tri.a; 
 
             let distance: f32 = dot(ao, tri.calc_normal) * inv_det;
 
-            if distance < 0.0 || distance > closest_distance {
+            if distance < 0.0 || distance >= closest_distance {
                 continue;
             }
 
@@ -419,6 +407,18 @@ fn check_triangles(ray: Ray) -> HitPayload{
 
             if w < 0.0 {
                 continue;
+            }
+
+            var front_face: bool;
+
+            var hitside_normal: vec3<f32>;
+
+            if determinant > 0.0 {
+                front_face = true;
+                hitside_normal = tri.face_normal;
+            }else{
+                front_face = false;
+                hitside_normal = -tri.face_normal;
             }
 
             closest_distance = distance;

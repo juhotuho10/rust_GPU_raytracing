@@ -27,7 +27,7 @@ pub struct Camera {
 impl Camera {
     pub fn new(width: u32, height: u32) -> Camera {
         let mut camera = Camera {
-            position: vec3a(0., -7.0, 25.),
+            position: vec3a(3.0, -1.0, 6.),
             direction: vec3a(0., 0., -1.),
 
             viewport_width: width,
