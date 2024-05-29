@@ -1,5 +1,6 @@
 use glam::Vec3A;
-use wgpu::{util::DeviceExt, BindGroup, BindGroupLayout, Buffer, Device, Queue};
+
+use wgpu::{util::DeviceExt, BindGroup, BindGroupLayout, Buffer, Device, Queue, Texture};
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -139,6 +140,7 @@ impl DataBuffers {
         triangle_array: &[SceneTriangle],
         object_array: &[ObjectInfo],
         params: &[Params],
+        texture_array: &Texture,
     ) -> (DataBuffers, BindGroupLayout, BindGroup) {
         let ray_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Ray Buffer"),
@@ -220,7 +222,8 @@ impl DataBuffers {
             object_buffer,
         };
 
-        let (bind_group_layout, compute_bind_group) = buffers.create_compute_bindgroup(device);
+        let (bind_group_layout, compute_bind_group) =
+            buffers.create_compute_bindgroup(device, texture_array);
 
         (buffers, bind_group_layout, compute_bind_group)
     }
@@ -228,6 +231,7 @@ impl DataBuffers {
     fn create_compute_bindgroup(
         &self,
         device: &wgpu::Device,
+        texture_array: &Texture,
     ) -> (wgpu::BindGroupLayout, BindGroup) {
         let params_bind = 0;
         let ray_directions_bind = 1;
@@ -238,6 +242,11 @@ impl DataBuffers {
         let accumulation_bind = 6;
         let triangle_bind = 7;
         let object_bind = 8;
+        let texture_bind = 9;
+
+        // ######################### GENERATE TEXTURE DATA #########################
+
+        // #########################################################################
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -331,6 +340,17 @@ impl DataBuffers {
                     },
                     count: None,
                 },
+                // ##################### textures ###########################
+                wgpu::BindGroupLayoutEntry {
+                    binding: texture_bind,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
             label: None,
         });
@@ -373,6 +393,12 @@ impl DataBuffers {
                 wgpu::BindGroupEntry {
                     binding: object_bind,
                     resource: self.object_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: texture_bind,
+                    resource: wgpu::BindingResource::TextureView(
+                        &texture_array.create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
                 },
             ],
             label: None,

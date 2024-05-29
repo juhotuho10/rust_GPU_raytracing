@@ -11,6 +11,17 @@ const U32_MAX: u32 = 4294967295u;
 @group(0) @binding(6) var<storage, read_write> accumulation_data: array<vec3<f32>>;
 @group(0) @binding(7) var<storage, read> triangle_array: array<SceneTriangle, 420>;
 @group(0) @binding(8) var<uniform> object_array: array<ObjectInfo, 3>;
+@group(0) @binding(9) var texture_array: texture_2d_array<f32>;
+
+
+fn sample_texture(index: i32, coords: vec2<f32>, texture_size: vec2<i32>) -> vec3<f32> {
+    let texel_coords = vec2<i32>(coords * vec2<f32>(texture_size));
+
+    let color = textureLoad(texture_array, texel_coords, index, 0);
+
+    return color.rgb;
+}
+
 
 struct Params {
     sky_color: vec3<f32>,
@@ -196,7 +207,14 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
         let diffuse_direction: vec3<f32> = normalize(hit_payload.hitside_normal + random_normal_scaler(&seed));
         let specular_direction: vec3<f32> = reflect(ray.direction, hit_payload.hitside_normal);
 
-        let emitted_light = current_material.albedo * current_material.emission_power;
+        //let current_color = current_material.albedo;
+
+        let uv = vec2<f32>(0.5, 0.5);
+        let texture_size = vec2<i32>(100, 100);
+
+        let current_color = sample_texture(1, uv, texture_size);
+
+        let emitted_light = current_color * current_material.emission_power;
         light += emitted_light * light_contribution;
 
         let is_glass: bool = current_material.glass > random(&seed);
@@ -234,7 +252,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
                 // ray goes through the material so we want it to be set on the opposite side of the hitside normal
                 ray.origin = hit_payload.world_position - hit_payload.hitside_normal * 0.0001;
 
-                light_contribution *= current_material.albedo; 
+                light_contribution *= current_color; 
             }
 
         }else{
@@ -246,7 +264,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
 
             }else{
                 ray.direction = lerp(specular_direction, diffuse_direction, current_material.roughness);
-                light_contribution *= current_material.albedo;
+                light_contribution *= current_color;
             }
 
             ray.origin = hit_payload.world_position + hit_payload.hitside_normal * 0.0001;
@@ -531,3 +549,5 @@ fn normal_distribution(seed: ptr<function, u32>) -> f32{
 fn normalize_u32(value: u32) -> f32{
     return f32(value) / f32(U32_MAX);
 }
+
+

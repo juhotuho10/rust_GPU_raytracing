@@ -10,6 +10,8 @@ use egui::Context;
 
 use wgpu::{BindGroup, BindGroupLayout, CommandEncoder, Device, Queue, Texture};
 
+use image::GenericImageView;
+
 #[derive(Debug, Clone)]
 pub struct RenderScene {
     pub spheres: Vec<SceneSphere>,
@@ -29,6 +31,7 @@ pub struct Renderer<'a> {
     pub compute_per_frame: u32,
     accumulation_index: u32,
     buffers: buffers::DataBuffers,
+    pub texure_array: Texture,
 }
 
 impl Renderer<'_> {
@@ -50,6 +53,8 @@ impl Renderer<'_> {
             _padding: [0; 4],
         };
 
+        let texture_array = make_texture_array(device, queue);
+
         let (buffers, bind_group_layout, compute_bind_group) = buffers::DataBuffers::new(
             device,
             &size,
@@ -60,6 +65,7 @@ impl Renderer<'_> {
             &triangles,
             &object_info_vec,
             &[params],
+            &texture_array,
         );
 
         let renderer = Renderer {
@@ -73,6 +79,7 @@ impl Renderer<'_> {
             compute_per_frame: params.compute_per_frame,
             accumulation_index: 1,
             buffers,
+            texure_array: texture_array,
         };
 
         (renderer, bind_group_layout, compute_bind_group)
@@ -250,4 +257,52 @@ pub fn get_triangle_data(scene: &RenderScene) -> (Vec<ObjectInfo>, Vec<SceneTria
         .flat_map(|object| object.object_triangles.clone())
         .collect();
     (object_info_vec, triangles)
+}
+
+pub fn make_texture_array(device: &Device, queue: &Queue) -> Texture {
+    let texture_count = 6; // Example number of textures
+    let texture_size = wgpu::Extent3d {
+        width: 100,
+        height: 100,
+        depth_or_array_layers: texture_count,
+    };
+
+    let texture_array = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("Texture Array"),
+        size: texture_size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+
+    for i in 0..texture_count {
+        let img = image::open("./textures/red.png").unwrap();
+        let rgba = img.to_rgba8();
+        let dimensions = img.dimensions();
+
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &texture_array,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x: 0, y: 0, z: i },
+                aspect: wgpu::TextureAspect::All,
+            },
+            &rgba,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * dimensions.0), // 4x u8 per pixel
+                rows_per_image: Some(dimensions.1),
+            },
+            wgpu::Extent3d {
+                width: dimensions.0,
+                height: dimensions.1,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+
+    texture_array
 }
