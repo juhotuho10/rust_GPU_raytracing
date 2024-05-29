@@ -1,4 +1,5 @@
 use glam::vec3a;
+use image::GenericImageView;
 
 use super::triangle_object::ObjectCreation;
 
@@ -54,7 +55,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     let width = 100;
     let height = 100;
 
-    let shiny_green_texture = ImageTexture::new_from_color([0.0, 0.8, 0.4], width, height);
+    let shiny_green_texture = ImageTexture::new_from_image("./textures/red.png");
     let rough_blue_texture = ImageTexture::new_from_color([0.3, 0.2, 0.8], width, height);
     let glossy_pink_texture = ImageTexture::new_from_color([1.0, 0.1, 1.0], width, height);
     let shiny_orange_texture = ImageTexture::new_from_color([1.0, 0.7, 0.0], width, height);
@@ -213,5 +214,7 @@ fn solid_color_image(color: [f32; 3], width: u32, height: u32) -> ImageBuffer<Rg
 
 fn load_image(path: &str) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
     let img = image::open(path).expect("could not load the image");
+    let dim = img.dimensions();
+    assert_eq!(dim, (100, 100), "Image dimension has to be 100 x 100");
     img.to_rgba8()
 }

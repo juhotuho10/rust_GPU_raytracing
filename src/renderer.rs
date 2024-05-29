@@ -32,7 +32,6 @@ pub struct Renderer<'a> {
     pub compute_per_frame: u32,
     accumulation_index: u32,
     buffers: buffers::DataBuffers,
-    pub texure_array: Texture,
 }
 
 impl Renderer<'_> {
@@ -54,8 +53,6 @@ impl Renderer<'_> {
             _padding: [0; 4],
         };
 
-        let texture_array = make_texture_array(device, queue, &scene.image_textures);
-
         let (buffers, bind_group_layout, compute_bind_group) = buffers::DataBuffers::new(
             device,
             &size,
@@ -66,8 +63,9 @@ impl Renderer<'_> {
             &triangles,
             &object_info_vec,
             &[params],
-            &texture_array,
         );
+
+        buffers.update_texture_buffer(&scene.image_textures, queue);
 
         let renderer = Renderer {
             camera,
@@ -80,7 +78,6 @@ impl Renderer<'_> {
             compute_per_frame: params.compute_per_frame,
             accumulation_index: 1,
             buffers,
-            texure_array: texture_array,
         };
 
         (renderer, bind_group_layout, compute_bind_group)
@@ -141,6 +138,14 @@ impl Renderer<'_> {
         for object in &mut self.scene.objects {
             object.update_triangles();
         }
+
+        for texture in &mut self.scene.image_textures {
+            texture.update_color();
+        }
+
+        self.buffers
+            .update_texture_buffer(&self.scene.image_textures, self.queue);
+
         let (new_object_info, new_triangles) = get_triangle_data(&self.scene);
 
         self.buffers.update_triangles(self.queue, &new_triangles);
@@ -258,56 +263,4 @@ pub fn get_triangle_data(scene: &RenderScene) -> (Vec<ObjectInfo>, Vec<SceneTria
         .flat_map(|object| object.object_triangles.clone())
         .collect();
     (object_info_vec, triangles)
-}
-
-pub fn make_texture_array(
-    device: &Device,
-    queue: &Queue,
-    image_textures: &[ImageTexture],
-) -> Texture {
-    let texture_count = image_textures.len(); // Example number of textures
-    let texture_size = wgpu::Extent3d {
-        width: 100,
-        height: 100,
-        depth_or_array_layers: texture_count as u32,
-    };
-
-    let texture_array = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("Texture Array"),
-        size: texture_size,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    });
-
-    for (i, texture) in image_textures.iter().enumerate() {
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &texture_array,
-                mip_level: 0,
-                origin: wgpu::Origin3d {
-                    x: 0,
-                    y: 0,
-                    z: i as u32,
-                },
-                aspect: wgpu::TextureAspect::All,
-            },
-            &texture.image_buffer,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(4 * 100), // 4x u8 per pixel
-                rows_per_image: Some(100),
-            },
-            wgpu::Extent3d {
-                width: 100,
-                height: 100,
-                depth_or_array_layers: 1,
-            },
-        );
-    }
-
-    texture_array
 }

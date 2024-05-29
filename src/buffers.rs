@@ -2,6 +2,8 @@ use glam::Vec3A;
 
 use wgpu::{util::DeviceExt, BindGroup, BindGroupLayout, Buffer, Device, Queue, Texture};
 
+use crate::define_scene::ImageTexture;
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Params {
@@ -126,6 +128,7 @@ pub struct DataBuffers {
     pub accumulation_buffer: Buffer,
     pub triangle_buffer: Buffer,
     pub object_buffer: Buffer,
+    pub image_textures: Texture,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -140,7 +143,6 @@ impl DataBuffers {
         triangle_array: &[SceneTriangle],
         object_array: &[ObjectInfo],
         params: &[Params],
-        texture_array: &Texture,
     ) -> (DataBuffers, BindGroupLayout, BindGroup) {
         let ray_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Ray Buffer"),
@@ -208,6 +210,23 @@ impl DataBuffers {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        let texture_size = wgpu::Extent3d {
+            width: 100,
+            height: 100,
+            depth_or_array_layers: 6,
+        };
+
+        let image_textures = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Texture Array"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
         let buffers = DataBuffers {
             output_buffer_size,
             accumulation_buffer_size,
@@ -220,10 +239,10 @@ impl DataBuffers {
             accumulation_buffer,
             triangle_buffer,
             object_buffer,
+            image_textures,
         };
 
-        let (bind_group_layout, compute_bind_group) =
-            buffers.create_compute_bindgroup(device, texture_array);
+        let (bind_group_layout, compute_bind_group) = buffers.create_compute_bindgroup(device);
 
         (buffers, bind_group_layout, compute_bind_group)
     }
@@ -231,7 +250,6 @@ impl DataBuffers {
     fn create_compute_bindgroup(
         &self,
         device: &wgpu::Device,
-        texture_array: &Texture,
     ) -> (wgpu::BindGroupLayout, BindGroup) {
         let params_bind = 0;
         let ray_directions_bind = 1;
@@ -397,7 +415,9 @@ impl DataBuffers {
                 wgpu::BindGroupEntry {
                     binding: texture_bind,
                     resource: wgpu::BindingResource::TextureView(
-                        &texture_array.create_view(&wgpu::TextureViewDescriptor::default()),
+                        &self
+                            .image_textures
+                            .create_view(&wgpu::TextureViewDescriptor::default()),
                     ),
                 },
             ],
@@ -405,6 +425,34 @@ impl DataBuffers {
         });
 
         (bind_group_layout, compute_bind_group)
+    }
+
+    pub fn update_texture_buffer(&self, textures: &[ImageTexture], queue: &Queue) {
+        for (i, texture) in textures.iter().enumerate() {
+            queue.write_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &self.image_textures,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: i as u32,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &texture.image_buffer,
+                wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4 * 100), // 4x u8 per pixel
+                    rows_per_image: Some(100),
+                },
+                wgpu::Extent3d {
+                    width: 100,
+                    height: 100,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
     }
 
     pub fn update_ray_directions(&self, queue: &Queue, new_rays: &[Ray]) {
