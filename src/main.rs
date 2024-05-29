@@ -77,9 +77,11 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
 
-    let frametime_target = 5;
+    let frametime_target = 5; // milliseconds
 
-    let compute_target = 0.8;
+    let computetime_target = 0.8; // milliseconds
+
+    let computation_per_frame = 5;
 
     let instance = generate_instance();
 
@@ -107,6 +109,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         accumulate: 1,
         sphere_count: scene.spheres.len() as u32,
         object_count: scene.objects.len() as u32,
+        compute_per_frame: computation_per_frame,
+        _padding: [0; 12],
     };
 
     let (mut scene_renderer, compute_bindgroup_layout, compute_bind_group) =
@@ -189,7 +193,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let mut compute_per_second_timer = Instant::now();
 
-    /* ##############################################3################################# */
+    /* ################################################################################ */
 
     //event_loop.set_control_flow(ControlFlow::Poll);
     event_loop
@@ -210,6 +214,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 current_mouse_pos = pos2(position.x as f32, position.y as f32);
                             }
                         }
+
                         WindowEvent::Resized(new_size) => {
                             size.width = new_size.width.max(1);
                             size.height = new_size.height.max(1);
@@ -305,10 +310,11 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                             // #############################################################################################
 
-                            if compute_timer.elapsed().as_micros() as f32 / 1000.0 > compute_target
+                            if compute_timer.elapsed().as_micros() as f32 / 1000.0
+                                > computetime_target
                             {
                                 compute_timer = Instant::now();
-                                compute_counter += 5;
+                                compute_counter += computation_per_frame;
                                 scene_renderer
                                     .compute_frame(&compute_pipeline, &compute_bind_group);
                             }
@@ -462,7 +468,6 @@ fn create_texture(device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) ->
 
 fn create_device_bindgroup(
     device: &wgpu::Device,
-
     texture: &wgpu::Texture,
     sampler: &wgpu::Sampler,
 ) -> (wgpu::BindGroupLayout, BindGroup) {

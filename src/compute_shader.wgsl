@@ -19,6 +19,10 @@ struct Params {
     accumulate: u32,
     sphere_count: u32,   
     object_count: u32, 
+    compute_per_frame: u32,
+    _padding1: u32,
+    _padding2: u32,
+    _padding3: u32,
 };
 
 
@@ -111,17 +115,15 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     var pixel_color = accumulation_data[index];
 
-    let renders_times = 5u;
-
     if params.accumulate == 1{
 
-        for (var i: u32 = 0u; i < renders_times; i = i + 1) {
+        for (var i: u32 = 0u; i < params.compute_per_frame; i = i + 1) {
             pixel_color += per_pixel(index, bounces, random_index);
             random_index = random_index + 1;
         }
         accumulation_data[index] = pixel_color;
 
-        var accumulated_color = pixel_color / f32(params.accumulation_index * renders_times);
+        var accumulated_color = pixel_color / f32(params.accumulation_index * params.compute_per_frame);
 
         render_color = clamp(accumulated_color, vec3<f32>(0.0), vec3<f32>(1.0));
         
@@ -346,7 +348,6 @@ fn check_spheres(ray: Ray) -> HitPayload{
 }
 
 
-
 fn ray_in_bounds(ray: Ray, min_bounds: vec3<f32>, max_bounds: vec3<f32>) -> bool{
 
     // quick check to see if the ray falls within the object bounds
@@ -359,8 +360,8 @@ fn ray_in_bounds(ray: Ray, min_bounds: vec3<f32>, max_bounds: vec3<f32>) -> bool
     let near_t: f32 = max(max(t1.x, t1.y), t1.z);
     let far_t: f32 = min(min(t2.x, t2.y), t2.z);
     return near_t <= far_t && far_t >= 0.0;
-    
 }
+
 
 fn check_triangles(ray: Ray) -> HitPayload{
 
@@ -379,8 +380,8 @@ fn check_triangles(ray: Ray) -> HitPayload{
             let triangle_index = object_info.first_triangle_index + i;
             let tri: SceneTriangle = triangle_array[triangle_index];
 
-            // quick way to filter out objects that can't be hit with ray
-            if !ray_in_bounds(ray, tri.min_bounds, tri.max_bounds){
+            //quick way to filter out objects that can't be hit with ray
+            if !ray_in_bounds(ray, object_info.min_bounds, object_info.max_bounds){
                 continue;
             }
             

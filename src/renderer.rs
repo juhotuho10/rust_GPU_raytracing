@@ -26,6 +26,7 @@ pub struct Renderer<'a> {
     pub accumulate: bool,
     pub object_index: usize,
     pub sphere_index: usize,
+    pub compute_per_frame: u32,
     accumulation_index: u32,
     buffers: buffers::DataBuffers,
 }
@@ -69,6 +70,7 @@ impl Renderer<'_> {
             accumulate,
             object_index: 0,
             sphere_index: 0,
+            compute_per_frame: params.compute_per_frame,
             accumulation_index: 1,
             buffers,
         };
@@ -114,6 +116,8 @@ impl Renderer<'_> {
             accumulate: self.accumulate as u32,
             sphere_count: self.scene.spheres.len() as u32,
             object_count: self.scene.objects.len() as u32,
+            compute_per_frame: self.compute_per_frame,
+            _padding: [0; 12],
         };
 
         self.buffers
@@ -163,6 +167,8 @@ impl Renderer<'_> {
                 accumulate: self.accumulate as u32,
                 sphere_count: self.scene.spheres.len() as u32,
                 object_count: self.scene.objects.len() as u32,
+                compute_per_frame: self.compute_per_frame,
+                _padding: [0; 12],
             };
 
             self.buffers.update_accumulation(self.queue, &[params]);

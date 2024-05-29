@@ -10,6 +10,8 @@ pub struct Params {
     pub accumulate: u32,         // u32, aligned to 4 bytes
     pub sphere_count: u32,       // u32, aligned to 4 bytes
     pub object_count: u32,       // u32, aligned to 4 bytes
+    pub compute_per_frame: u32,  // u32, aligned to 4 bytes
+    pub _padding: [u8; 12],      // padding to ensure 16-byte alignment
 }
 
 #[repr(C)]
@@ -82,6 +84,7 @@ impl SceneTriangle {
             _padding6: [0; 4],               // padding to ensure 16-byte alignment
             max_bounds: max_bounds.into(),   // vec3, aligned to 12 bytes
             _padding7: [0; 4],               // padding to ensure 16-byte alignment
+                                             // vec3, aligned to 12 bytes
         }
     }
 }
