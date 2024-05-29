@@ -14,10 +14,10 @@ const U32_MAX: u32 = 4294967295u;
 @group(0) @binding(9) var texture_array: texture_2d_array<f32>;
 
 
-fn sample_texture(index: i32, coords: vec2<f32>, texture_size: vec2<i32>) -> vec3<f32> {
+fn sample_texture(index: u32, coords: vec2<f32>, texture_size: vec2<i32>) -> vec3<f32> {
     let texel_coords = vec2<i32>(coords * vec2<f32>(texture_size));
 
-    let color = textureLoad(texture_array, texel_coords, index, 0);
+    let color = textureLoad(texture_array, texel_coords, i32(index), 0);
 
     return color.rgb;
 }
@@ -45,7 +45,7 @@ struct RayCamera {
 };
 
 struct SceneMaterial {
-    albedo: vec3<f32>,         
+    texture_index: u32,         
     roughness: f32,
     emission_power: f32,            
     specular: f32,            
@@ -54,10 +54,10 @@ struct SceneMaterial {
     refraction_index: f32,
     // explicit padding to match 16 byte alignment
     _padding1: u32,
-    _padding2: u32,
-    _padding3: u32,
+
            
 }
+
 
 struct SceneSphere {
     position: vec3<f32>,  
@@ -212,7 +212,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
         let uv = vec2<f32>(0.5, 0.5);
         let texture_size = vec2<i32>(100, 100);
 
-        let current_color = sample_texture(1, uv, texture_size);
+        let current_color = sample_texture(current_material.texture_index, uv, texture_size);
 
         let emitted_light = current_color * current_material.emission_power;
         light += emitted_light * light_contribution;

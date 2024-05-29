@@ -814,17 +814,23 @@ fn ui_material_selection(
         ui.label("object material:");
         let current_material = &mut screne_renderer.scene.materials[material_index];
 
-        let color = &mut current_material.albedo;
+        let texture_index = current_material.texture_index;
+
+        let current_image = &mut screne_renderer.scene.image_textures[texture_index as usize];
 
         let emission_power = &mut current_material.emission_power;
 
-        if ui
-            .color_edit_button_rgb(color)
-            .on_hover_text("color")
-            .changed()
-        {
-            *interacted = true;
-        };
+        let color = &mut current_image.color;
+
+        if let Some(color) = color {
+            if ui
+                .color_edit_button_rgb(color)
+                .on_hover_text("color")
+                .changed()
+            {
+                *interacted = true;
+            };
+        }
 
         if create_drag_value!(ui, emission_power, 0.2, 0.0..=200.0, "emission power:") {
             *interacted = true;

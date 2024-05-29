@@ -2,6 +2,8 @@ use crate::buffers::{ObjectInfo, Params, RayCamera, SceneMaterial, SceneSphere, 
 
 use crate::triangle_object::SceneObject;
 
+use crate::define_scene::ImageTexture;
+
 use super::camera::Camera;
 
 use super::buffers;
@@ -10,11 +12,10 @@ use egui::Context;
 
 use wgpu::{BindGroup, BindGroupLayout, CommandEncoder, Device, Queue, Texture};
 
-use image::GenericImageView;
-
 #[derive(Debug, Clone)]
 pub struct RenderScene {
     pub spheres: Vec<SceneSphere>,
+    pub image_textures: Vec<ImageTexture>,
     pub materials: Vec<SceneMaterial>,
     pub objects: Vec<SceneObject>,
     pub sky_color: [f32; 3],
@@ -53,7 +54,7 @@ impl Renderer<'_> {
             _padding: [0; 4],
         };
 
-        let texture_array = make_texture_array(device, queue);
+        let texture_array = make_texture_array(device, queue, &scene.image_textures);
 
         let (buffers, bind_group_layout, compute_bind_group) = buffers::DataBuffers::new(
             device,
@@ -259,12 +260,16 @@ pub fn get_triangle_data(scene: &RenderScene) -> (Vec<ObjectInfo>, Vec<SceneTria
     (object_info_vec, triangles)
 }
 
-pub fn make_texture_array(device: &Device, queue: &Queue) -> Texture {
-    let texture_count = 6; // Example number of textures
+pub fn make_texture_array(
+    device: &Device,
+    queue: &Queue,
+    image_textures: &[ImageTexture],
+) -> Texture {
+    let texture_count = image_textures.len(); // Example number of textures
     let texture_size = wgpu::Extent3d {
         width: 100,
         height: 100,
-        depth_or_array_layers: texture_count,
+        depth_or_array_layers: texture_count as u32,
     };
 
     let texture_array = device.create_texture(&wgpu::TextureDescriptor {
@@ -278,27 +283,27 @@ pub fn make_texture_array(device: &Device, queue: &Queue) -> Texture {
         view_formats: &[],
     });
 
-    for i in 0..texture_count {
-        let img = image::open("./textures/red.png").unwrap();
-        let rgba = img.to_rgba8();
-        let dimensions = img.dimensions();
-
+    for (i, texture) in image_textures.iter().enumerate() {
         queue.write_texture(
             wgpu::ImageCopyTexture {
                 texture: &texture_array,
                 mip_level: 0,
-                origin: wgpu::Origin3d { x: 0, y: 0, z: i },
+                origin: wgpu::Origin3d {
+                    x: 0,
+                    y: 0,
+                    z: i as u32,
+                },
                 aspect: wgpu::TextureAspect::All,
             },
-            &rgba,
+            &texture.image_buffer,
             wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * dimensions.0), // 4x u8 per pixel
-                rows_per_image: Some(dimensions.1),
+                bytes_per_row: Some(4 * 100), // 4x u8 per pixel
+                rows_per_image: Some(100),
             },
             wgpu::Extent3d {
-                width: dimensions.0,
-                height: dimensions.1,
+                width: 100,
+                height: 100,
                 depth_or_array_layers: 1,
             },
         );
