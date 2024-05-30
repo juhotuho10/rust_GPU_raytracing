@@ -2,19 +2,21 @@ use glam::Vec3A;
 
 use wgpu::{util::DeviceExt, BindGroup, BindGroupLayout, Buffer, Device, Queue, Texture};
 
-use crate::define_scene::ImageTexture;
+use super::image_texture::*;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Params {
     pub sky_color: [f32; 3],     // vec3, aligned to 12 bytes
-    pub width: u32,              // float, aligned to 4 bytes
+    pub screen_width: u32,       // float, aligned to 4 bytes
     pub accumulation_index: u32, // u32, aligned to 4 bytes
     pub accumulate: u32,         // u32, aligned to 4 bytes
     pub sphere_count: u32,       // u32, aligned to 4 bytes
     pub object_count: u32,       // u32, aligned to 4 bytes
     pub compute_per_frame: u32,  // u32, aligned to 4 bytes
-    pub _padding: [u8; 12],      // padding to ensure 16-byte alignment
+    pub texture_width: u32,
+    pub texture_height: u32,
+    pub textue_count: u32,
 }
 
 #[repr(C)]
@@ -211,9 +213,9 @@ impl DataBuffers {
         });
 
         let texture_size = wgpu::Extent3d {
-            width: 100,
-            height: 100,
-            depth_or_array_layers: 6,
+            width: params[0].texture_width,
+            height: params[0].texture_height,
+            depth_or_array_layers: params[0].textue_count,
         };
 
         let image_textures = device.create_texture(&wgpu::TextureDescriptor {
@@ -427,7 +429,13 @@ impl DataBuffers {
         (bind_group_layout, compute_bind_group)
     }
 
-    pub fn update_texture_buffer(&self, textures: &[ImageTexture], queue: &Queue) {
+    pub fn update_texture_buffer(
+        &self,
+        textures: &[ImageTexture],
+        queue: &Queue,
+        texture_width: u32,
+        texture_height: u32,
+    ) {
         for (i, texture) in textures.iter().enumerate() {
             queue.write_texture(
                 wgpu::ImageCopyTexture {
@@ -443,12 +451,12 @@ impl DataBuffers {
                 &texture.image_buffer,
                 wgpu::ImageDataLayout {
                     offset: 0,
-                    bytes_per_row: Some(4 * 100), // 4x u8 per pixel
-                    rows_per_image: Some(100),
+                    bytes_per_row: Some(4 * texture_width), // 4x u8 per pixel
+                    rows_per_image: Some(texture_height),
                 },
                 wgpu::Extent3d {
-                    width: 100,
-                    height: 100,
+                    width: texture_width,
+                    height: texture_height,
                     depth_or_array_layers: 1,
                 },
             );

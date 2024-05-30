@@ -1,7 +1,5 @@
-use glam::vec3a;
-use image::GenericImageView;
-
 use super::triangle_object::ObjectCreation;
+use glam::vec3a;
 
 use super::triangle_object::load_stl_files;
 
@@ -9,58 +7,18 @@ use super::buffers::{SceneMaterial, SceneSphere};
 
 use super::renderer::RenderScene;
 
-use image::{ImageBuffer, Rgba};
-
-#[derive(Debug, Clone)]
-pub struct ImageTexture {
-    pub from_color: bool,
-    pub color: Option<[f32; 3]>,
-    pub image_buffer: ImageBuffer<Rgba<u8>, Vec<u8>>,
-}
-
-impl ImageTexture {
-    pub fn new_from_color(color: [f32; 3], width: u32, height: u32) -> ImageTexture {
-        ImageTexture {
-            from_color: true,
-            color: Some(color),
-            image_buffer: solid_color_image(color, width, height),
-        }
-    }
-
-    pub fn new_from_image(path: &str) -> ImageTexture {
-        ImageTexture {
-            from_color: false,
-            color: None,
-            image_buffer: load_image(path),
-        }
-    }
-
-    pub fn update_color(&mut self) {
-        // we dont recolor textures that were loaded from files
-        if let Some(color) = self.color {
-            let rgba_color = [
-                (color[0] * 255.0) as u8,
-                (color[1] * 255.0) as u8,
-                (color[2] * 255.0) as u8,
-                255,
-            ];
-            for pixel in self.image_buffer.pixels_mut() {
-                *pixel = Rgba(rgba_color);
-            }
-        }
-    }
-}
+use super::image_texture::ImageTexture;
 
 pub(crate) fn define_render_scene() -> RenderScene {
-    let width = 100;
-    let height = 100;
+    // width and height for all images
+    let texture_size = [100, 100];
 
-    let shiny_green_texture = ImageTexture::new_from_image("./textures/red.png");
-    let rough_blue_texture = ImageTexture::new_from_color([0.3, 0.2, 0.8], width, height);
-    let glossy_pink_texture = ImageTexture::new_from_color([1.0, 0.1, 1.0], width, height);
-    let shiny_orange_texture = ImageTexture::new_from_color([1.0, 0.7, 0.0], width, height);
-    let cool_red_texture = ImageTexture::new_from_color([1.0, 0.0, 0.4], width, height);
-    let shiny_white_texture = ImageTexture::new_from_color([1.0, 1.0, 1.0], width, height);
+    let shiny_green_texture = ImageTexture::new_from_image("./textures/earth.png", texture_size);
+    let rough_blue_texture = ImageTexture::new_from_color([0.3, 0.2, 0.8], texture_size);
+    let glossy_pink_texture = ImageTexture::new_from_image("./textures/moon.png", texture_size);
+    let shiny_orange_texture = ImageTexture::new_from_color([1.0, 0.7, 0.0], texture_size);
+    let cool_red_texture = ImageTexture::new_from_color([1.0, 0.0, 0.4], texture_size);
+    let shiny_white_texture = ImageTexture::new_from_color([1.0, 1.0, 1.0], texture_size);
 
     let shiny_green = SceneMaterial {
         texture_index: 0,
@@ -183,6 +141,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
             cool_red_texture,
             shiny_white_texture,
         ],
+        texture_size,
 
         materials: vec![
             shiny_green,
@@ -196,25 +155,4 @@ pub(crate) fn define_render_scene() -> RenderScene {
         objects: object_vec,
         sky_color: [0., 0.04, 0.1],
     }
-}
-
-fn solid_color_image(color: [f32; 3], width: u32, height: u32) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
-    let mut img = ImageBuffer::new(width, height);
-    let rgba_color = [
-        (color[0] * 255.0) as u8,
-        (color[1] * 255.0) as u8,
-        (color[2] * 255.0) as u8,
-        255,
-    ];
-    for pixel in img.pixels_mut() {
-        *pixel = Rgba(rgba_color);
-    }
-    img
-}
-
-fn load_image(path: &str) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
-    let img = image::open(path).expect("could not load the image");
-    let dim = img.dimensions();
-    assert_eq!(dim, (100, 100), "Image dimension has to be 100 x 100");
-    img.to_rgba8()
 }

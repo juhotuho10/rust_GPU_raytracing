@@ -1,5 +1,6 @@
 mod buffers;
 mod camera;
+mod image_texture;
 mod renderer;
 mod triangle_object;
 
@@ -103,14 +104,16 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     // Create uniform buffer
     let params = Params {
-        width: size.width,
+        screen_width: size.width,
         accumulation_index: 1,
         sky_color: scene.sky_color,
         accumulate: 1,
         sphere_count: scene.spheres.len() as u32,
         object_count: scene.objects.len() as u32,
         compute_per_frame: computation_per_frame,
-        _padding: [0; 12],
+        texture_width: scene.texture_size[0],
+        texture_height: scene.texture_size[1],
+        textue_count: scene.image_textures.len() as u32,
     };
 
     let (mut scene_renderer, compute_bindgroup_layout, compute_bind_group) =

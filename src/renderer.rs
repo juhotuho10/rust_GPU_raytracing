@@ -2,7 +2,7 @@ use crate::buffers::{ObjectInfo, Params, RayCamera, SceneMaterial, SceneSphere, 
 
 use crate::triangle_object::SceneObject;
 
-use crate::define_scene::ImageTexture;
+use crate::image_texture::ImageTexture;
 
 use super::camera::Camera;
 
@@ -15,6 +15,7 @@ use wgpu::{BindGroup, BindGroupLayout, CommandEncoder, Device, Queue, Texture};
 #[derive(Debug, Clone)]
 pub struct RenderScene {
     pub spheres: Vec<SceneSphere>,
+    pub texture_size: [u32; 2],
     pub image_textures: Vec<ImageTexture>,
     pub materials: Vec<SceneMaterial>,
     pub objects: Vec<SceneObject>,
@@ -65,7 +66,12 @@ impl Renderer<'_> {
             &[params],
         );
 
-        buffers.update_texture_buffer(&scene.image_textures, queue);
+        buffers.update_texture_buffer(
+            &scene.image_textures,
+            queue,
+            scene.texture_size[0],
+            scene.texture_size[1],
+        );
 
         let renderer = Renderer {
             camera,
@@ -116,13 +122,15 @@ impl Renderer<'_> {
 
         let params = Params {
             sky_color: self.scene.sky_color,
-            width: self.camera.viewport_width,
+            screen_width: self.camera.viewport_width,
             accumulation_index: self.accumulation_index,
             accumulate: self.accumulate as u32,
             sphere_count: self.scene.spheres.len() as u32,
             object_count: self.scene.objects.len() as u32,
             compute_per_frame: self.compute_per_frame,
-            _padding: [0; 12],
+            texture_width: self.scene.texture_size[0],
+            texture_height: self.scene.texture_size[1],
+            textue_count: self.scene.image_textures.len() as u32,
         };
 
         self.buffers
@@ -143,8 +151,12 @@ impl Renderer<'_> {
             texture.update_color();
         }
 
-        self.buffers
-            .update_texture_buffer(&self.scene.image_textures, self.queue);
+        self.buffers.update_texture_buffer(
+            &self.scene.image_textures,
+            self.queue,
+            self.scene.texture_size[0],
+            self.scene.texture_size[1],
+        );
 
         let (new_object_info, new_triangles) = get_triangle_data(&self.scene);
 
@@ -175,13 +187,15 @@ impl Renderer<'_> {
         if self.accumulate {
             let params = Params {
                 sky_color: self.scene.sky_color,
-                width,
+                screen_width: width,
                 accumulation_index: self.accumulation_index,
                 accumulate: self.accumulate as u32,
                 sphere_count: self.scene.spheres.len() as u32,
                 object_count: self.scene.objects.len() as u32,
                 compute_per_frame: self.compute_per_frame,
-                _padding: [0; 12],
+                texture_width: self.scene.texture_size[0],
+                texture_height: self.scene.texture_size[1],
+                textue_count: self.scene.image_textures.len() as u32,
             };
 
             self.buffers.update_accumulation(self.queue, &[params]);

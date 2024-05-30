@@ -1,5 +1,6 @@
 const F32_MAX: f32 = 3.4028235e+38;
 const U32_MAX: u32 = 4294967295u;
+const PI: f32 = 3.1415926536;
 
 
 @group(0) @binding(0) var<storage, read> params: Params;
@@ -31,9 +32,10 @@ struct Params {
     sphere_count: u32,   
     object_count: u32, 
     compute_per_frame: u32,
-    _padding1: u32,
-    _padding2: u32,
-    _padding3: u32,
+    texture_width: u32,
+    texture_height: u32,
+    textue_count: u32,
+
 };
 
 
@@ -105,6 +107,7 @@ struct HitPayload {
     hitside_normal: vec3<f32>,
     material_index: u32,
     front_face: bool,
+    texture_point: vec2<f32>
 }
 
 struct Ray {
@@ -209,10 +212,10 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
 
         //let current_color = current_material.albedo;
 
-        let uv = vec2<f32>(0.5, 0.5);
-        let texture_size = vec2<i32>(100, 100);
+   
+        let texture_size = vec2<i32>(i32(params.texture_width), i32(params.texture_height));
 
-        let current_color = sample_texture(current_material.texture_index, uv, texture_size);
+        let current_color = sample_texture(current_material.texture_index, hit_payload.texture_point, texture_size);
 
         let emitted_light = current_color * current_material.emission_power;
         light += emitted_light * light_contribution;
@@ -457,6 +460,7 @@ fn check_triangles(ray: Ray) -> HitPayload{
                 hitside_normal,
                 object_info.material_index,
                 front_face,
+                vec2<f32>(0.5, 0.5)
                 );
   
             };
@@ -473,6 +477,7 @@ fn miss() -> HitPayload{
     vec3<f32>(0.0),
     0u,
     false,
+    vec2<f32>(0.0, 0.0)
     );
 }
 
@@ -482,6 +487,9 @@ fn sphere_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
 
     let hit_point: vec3<f32> = ray.origin + ray.direction * hit_distance;
     var outward_normal: vec3<f32> = normalize(hit_point - closest_sphere.position);
+
+    let normalized_hitpoint: vec3<f32> = normalize(hit_point - closest_sphere.position);
+    let hitpoint: vec2<f32> = sphere_texture_coords(normalized_hitpoint);
 
 
     let front_face = dot(ray.direction, outward_normal) < 0;
@@ -499,9 +507,20 @@ fn sphere_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
     hitside_normal,
     closest_sphere.material_index,
     front_face,
+    hitpoint,
     );
 }
 
+fn sphere_texture_coords(normalized_hitpoint: vec3<f32>) -> vec2<f32>{
+
+    let theta: f32 = acos(-normalized_hitpoint.y);
+    let phi: f32 = atan2(-normalized_hitpoint.z, normalized_hitpoint.x) + PI;
+
+    let u: f32 = phi / (2.0 * PI);
+    let v: f32 = theta / PI;
+
+    return vec2<f32>(u, v);
+}
 
 fn random(seed: ptr<function, u32>) -> f32 {
 
