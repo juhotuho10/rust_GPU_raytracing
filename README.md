@@ -4,6 +4,7 @@ Currently a ongoing project building a raytracer running on the GPU with Vulkan!
 
 The next goal is to add more meshes and hopefully add support for textures on the surfaces
 
+![Ray tracer example 11](./Rendered_images/Raytracing_example11.png)
 ![Ray tracer example 10](./Rendered_images/Raytracing_example10.png)
 ![Ray tracer example 9](./Rendered_images/Raytracing_example9.png)
 ![Ray tracer example 8](./Rendered_images/Raytracing_example8.png)

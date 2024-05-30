@@ -7,11 +7,11 @@ const PI: f32 = 3.1415926536;
 @group(0) @binding(1) var<storage, read> camera_rays: array<vec3<f32>>;
 @group(0) @binding(2) var<storage, read_write> output_data: array<u32>;
 @group(0) @binding(3) var<uniform> ray_camera: RayCamera;
-@group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, 6>;
+@group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, 19>;
 @group(0) @binding(5) var<uniform> sphere_array: array<SceneSphere, 3>;
 @group(0) @binding(6) var<storage, read_write> accumulation_data: array<vec3<f32>>;
-@group(0) @binding(7) var<storage, read> triangle_array: array<SceneTriangle, 420>;
-@group(0) @binding(8) var<uniform> object_array: array<ObjectInfo, 3>;
+@group(0) @binding(7) var<storage, read> triangle_array: array<SceneTriangle, 5552>;
+@group(0) @binding(8) var<uniform> object_array: array<ObjectInfo, 34>;
 @group(0) @binding(9) var texture_array: texture_2d_array<f32>;
 
 

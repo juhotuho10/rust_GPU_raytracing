@@ -814,7 +814,7 @@ fn ui_material_selection(
     interacted: &mut bool,
 ) {
     ui.vertical_centered_justified(|ui: &mut egui::Ui| {
-        ui.label("object material:");
+        ui.label("object material: ");
         let current_material = &mut screne_renderer.scene.materials[material_index];
 
         let texture_index = current_material.texture_index;
@@ -835,37 +835,37 @@ fn ui_material_selection(
             };
         }
 
-        if create_drag_value!(ui, emission_power, 0.2, 0.0..=200.0, "emission power:") {
+        if create_drag_value!(ui, emission_power, 0.2, 0.0..=200.0, "emission power: ") {
             *interacted = true;
         }
 
         let material_roughness = &mut current_material.roughness;
 
-        if create_drag_value!(ui, material_roughness, 0.01, 0.0..=1.0, "roughness:") {
+        if create_drag_value!(ui, material_roughness, 0.01, 0.0..=1.0, "roughness: ") {
             *interacted = true;
         }
 
         let material_specular = &mut current_material.specular;
 
-        if create_drag_value!(ui, material_specular, 0.01, 0.0..=1.0, "specular:") {
+        if create_drag_value!(ui, material_specular, 0.01, 0.0..=1.0, "specular: ") {
             *interacted = true;
         }
 
         let specular_scatter = &mut current_material.specular_scatter;
 
-        if create_drag_value!(ui, specular_scatter, 0.01, 0.0..=0.5, "specular scatter") {
+        if create_drag_value!(ui, specular_scatter, 0.01, 0.0..=0.5, "specular scatter: ") {
             *interacted = true;
         }
 
         let glass_refraction = &mut current_material.glass;
 
-        if create_drag_value!(ui, glass_refraction, 0.01, 0.0..=1.0, "glass") {
+        if create_drag_value!(ui, glass_refraction, 0.01, 0.0..=1.0, "glass: ") {
             *interacted = true;
         }
 
         let refraction_index = &mut current_material.refraction_index;
 
-        if create_drag_value!(ui, refraction_index, 0.01, 0.0..=5.0, "refraction index") {
+        if create_drag_value!(ui, refraction_index, 0.01, 0.0..=5.0, "refraction index: ") {
             *interacted = true;
         }
     });
