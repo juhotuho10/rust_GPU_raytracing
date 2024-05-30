@@ -695,15 +695,15 @@ fn create_ui(
 
                     ui.label("location:");
                     ui.horizontal(|ui| {
-                        if create_drag_value!(ui, &mut coordinates[0], 0.1, -200.0..=200.0, "X: ") {
+                        if create_drag_value!(ui, &mut coordinates[0], 0.1, -400.0..=400.0, "X: ") {
                             interacted = true;
                         }
 
-                        if create_drag_value!(ui, &mut coordinates[1], 0.1, -200.0..=10.0, "Y: ") {
+                        if create_drag_value!(ui, &mut coordinates[1], 0.1, -400.0..=10.0, "Y: ") {
                             interacted = true;
                         }
 
-                        if create_drag_value!(ui, &mut coordinates[2], 0.1, -200.0..=200.0, "Z: ") {
+                        if create_drag_value!(ui, &mut coordinates[2], 0.1, -400.0..=400.0, "Z: ") {
                             interacted = true;
                         }
                     });
@@ -731,7 +731,7 @@ fn create_ui(
                     ui.vertical_centered_justified(|ui: &mut egui::Ui| {
                         let object_size = &mut current_object.scale;
 
-                        if create_drag_value!(ui, object_size, 0.01, 0.1..=50.0, "scale: ") {
+                        if create_drag_value!(ui, object_size, 0.01, 0.1..=100.0, "scale: ") {
                             interacted = true;
                         }
                     });
@@ -773,15 +773,15 @@ fn create_ui(
                 let sphere_position = &mut current_sphere.position;
 
                 ui.horizontal(|ui| {
-                    if create_drag_value!(ui, &mut sphere_position[0], 0.1, -200.0..=200.0, "X: ") {
+                    if create_drag_value!(ui, &mut sphere_position[0], 0.1, -400.0..=400.0, "X: ") {
                         interacted = true;
                     }
 
-                    if create_drag_value!(ui, &mut sphere_position[1], 0.1, -200.0..=10.0, "Y: ") {
+                    if create_drag_value!(ui, &mut sphere_position[1], 0.1, -400.0..=10.0, "Y: ") {
                         interacted = true;
                     }
 
-                    if create_drag_value!(ui, &mut sphere_position[2], 0.1, -200.0..=200.0, "Z: ") {
+                    if create_drag_value!(ui, &mut sphere_position[2], 0.1, -400.0..=400.0, "Z: ") {
                         interacted = true;
                     }
                 });

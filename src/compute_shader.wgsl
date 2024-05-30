@@ -454,13 +454,18 @@ fn check_triangles(ray: Ray) -> HitPayload{
 
             closest_distance = distance;
 
+            let hitpoint = ray.origin + ray.direction * distance;
+
+            let texture_coords = object_texture_coords(hitpoint, object_info.min_bounds, object_info.max_bounds);
+
+
             closest_hitpayload = HitPayload(
                 distance,
-                ray.origin + ray.direction * distance,
+                hitpoint,
                 hitside_normal,
                 object_info.material_index,
                 front_face,
-                vec2<f32>(0.5, 0.5)
+                texture_coords,
                 );
   
             };
@@ -488,9 +493,7 @@ fn sphere_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
     let hit_point: vec3<f32> = ray.origin + ray.direction * hit_distance;
     var outward_normal: vec3<f32> = normalize(hit_point - closest_sphere.position);
 
-    let normalized_hitpoint: vec3<f32> = normalize(hit_point - closest_sphere.position);
-    let hitpoint: vec2<f32> = sphere_texture_coords(normalized_hitpoint);
-
+    let texture_coords: vec2<f32> = sphere_texture_coords(outward_normal);
 
     let front_face = dot(ray.direction, outward_normal) < 0;
 
@@ -507,17 +510,29 @@ fn sphere_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
     hitside_normal,
     closest_sphere.material_index,
     front_face,
-    hitpoint,
+    texture_coords,
     );
 }
 
-fn sphere_texture_coords(normalized_hitpoint: vec3<f32>) -> vec2<f32>{
+fn sphere_texture_coords(outward_normal: vec3<f32>) -> vec2<f32>{
 
-    let theta: f32 = acos(-normalized_hitpoint.y);
-    let phi: f32 = atan2(-normalized_hitpoint.z, normalized_hitpoint.x) + PI;
+    let theta: f32 = acos(-outward_normal.y);
+    let phi: f32 = atan2(-outward_normal.z, outward_normal.x) + PI;
 
     let u: f32 = phi / (2.0 * PI);
     let v: f32 = theta / PI;
+
+    return vec2<f32>(u, v);
+}
+
+fn object_texture_coords(hitpoint: vec3<f32>, min_bounds: vec3<f32>, max_bounds: vec3<f32>) -> vec2<f32>{
+
+    let bounds_range = max_bounds - min_bounds;
+
+    let normalized_hitpoint = (hitpoint - min_bounds) / bounds_range;
+
+    let u = normalized_hitpoint.x;
+    let v = normalized_hitpoint.z;
 
     return vec2<f32>(u, v);
 }

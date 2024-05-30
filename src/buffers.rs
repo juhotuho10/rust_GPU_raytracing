@@ -14,9 +14,9 @@ pub struct Params {
     pub sphere_count: u32,       // u32, aligned to 4 bytes
     pub object_count: u32,       // u32, aligned to 4 bytes
     pub compute_per_frame: u32,  // u32, aligned to 4 bytes
-    pub texture_width: u32,
-    pub texture_height: u32,
-    pub textue_count: u32,
+    pub texture_width: u32,      // u32, aligned to 4 bytes
+    pub texture_height: u32,     // u32, aligned to 4 bytes
+    pub textue_count: u32,       // u32, aligned to 4 bytes
 }
 
 #[repr(C)]
@@ -360,7 +360,6 @@ impl DataBuffers {
                     },
                     count: None,
                 },
-                // ##################### textures ###########################
                 wgpu::BindGroupLayoutEntry {
                     binding: texture_bind,
                     visibility: wgpu::ShaderStages::COMPUTE,

@@ -11,11 +11,11 @@ use super::image_texture::ImageTexture;
 
 pub(crate) fn define_render_scene() -> RenderScene {
     // width and height for all images
-    let texture_size = [100, 100];
+    let texture_size = [400, 400];
 
-    let shiny_green_texture = ImageTexture::new_from_image("./textures/earth.png", texture_size);
-    let rough_blue_texture = ImageTexture::new_from_color([0.3, 0.2, 0.8], texture_size);
-    let glossy_pink_texture = ImageTexture::new_from_image("./textures/moon.png", texture_size);
+    let shiny_green_texture = ImageTexture::new_from_color([1.0, 0.0, 0.0], texture_size);
+    let rough_blue_texture = ImageTexture::new_from_image("./textures/chess.png", texture_size);
+    let glossy_pink_texture = ImageTexture::new_from_color([1.0, 0.1, 0.1], texture_size);
     let shiny_orange_texture = ImageTexture::new_from_color([1.0, 0.7, 0.0], texture_size);
     let cool_red_texture = ImageTexture::new_from_color([1.0, 0.0, 0.4], texture_size);
     let shiny_white_texture = ImageTexture::new_from_color([1.0, 1.0, 1.0], texture_size);
@@ -85,6 +85,8 @@ pub(crate) fn define_render_scene() -> RenderScene {
         refraction_index: 1.5,
         _padding: [0; 4],
     };
+
+    // ############# chess board ##############################
 
     let sphere_a: SceneSphere = SceneSphere {
         position: [1., -0.5, -2.],
