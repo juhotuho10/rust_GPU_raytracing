@@ -56,7 +56,6 @@ struct SceneMaterial {
     refraction_index: f32,
     // explicit padding to match 16 byte alignment
     _padding1: u32,
-
            
 }
 
@@ -476,13 +475,13 @@ fn check_triangles(ray: Ray) -> HitPayload{
 
 }
 
-fn miss() -> HitPayload{
+fn miss() -> HitPayload{ 
     return HitPayload(F32_MAX, 
     vec3<f32>(0.0),
     vec3<f32>(0.0),
     0u,
     false,
-    vec2<f32>(0.0, 0.0)
+    vec2<f32>(0.0)
     );
 }
 

@@ -110,7 +110,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
 
     let b_queen_material = SceneMaterial {
         texture_index: 6,
-        roughness: 0.1,
+        roughness: 0.9,
         emission_power: 0.0,
         specular: 0.2,
         specular_scatter: 0.2,
@@ -120,7 +120,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     };
     let b_king_material = SceneMaterial {
         texture_index: 7,
-        roughness: 0.1,
+        roughness: 0.9,
         emission_power: 0.0,
         specular: 0.2,
         specular_scatter: 0.2,
@@ -130,7 +130,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     };
     let b_rook_material = SceneMaterial {
         texture_index: 8,
-        roughness: 0.1,
+        roughness: 0.9,
         emission_power: 0.0,
         specular: 0.2,
         specular_scatter: 0.2,
@@ -140,7 +140,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     };
     let b_knight_material = SceneMaterial {
         texture_index: 9,
-        roughness: 0.1,
+        roughness: 0.9,
         emission_power: 0.0,
         specular: 0.2,
         specular_scatter: 0.2,
@@ -150,7 +150,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     };
     let b_bishop_material = SceneMaterial {
         texture_index: 10,
-        roughness: 0.1,
+        roughness: 0.9,
         emission_power: 0.0,
         specular: 0.2,
         specular_scatter: 0.2,
@@ -160,7 +160,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     };
     let b_pawns_material = SceneMaterial {
         texture_index: 11,
-        roughness: 0.1,
+        roughness: 0.9,
         emission_power: 0.0,
         specular: 0.2,
         specular_scatter: 0.2,
@@ -170,7 +170,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     };
     let w_queen_material = SceneMaterial {
         texture_index: 12,
-        roughness: 0.1,
+        roughness: 0.9,
         emission_power: 0.0,
         specular: 0.2,
         specular_scatter: 0.2,
@@ -180,7 +180,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     };
     let w_king_material = SceneMaterial {
         texture_index: 13,
-        roughness: 0.1,
+        roughness: 0.9,
         emission_power: 0.0,
         specular: 0.2,
         specular_scatter: 0.2,
@@ -190,7 +190,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     };
     let w_rook_material = SceneMaterial {
         texture_index: 14,
-        roughness: 0.1,
+        roughness: 0.9,
         emission_power: 0.0,
         specular: 0.2,
         specular_scatter: 0.2,
@@ -200,7 +200,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     };
     let w_knight_material = SceneMaterial {
         texture_index: 15,
-        roughness: 0.1,
+        roughness: 0.9,
         emission_power: 0.0,
         specular: 0.2,
         specular_scatter: 0.2,
@@ -210,7 +210,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     };
     let w_bishop_material = SceneMaterial {
         texture_index: 16,
-        roughness: 0.1,
+        roughness: 0.9,
         emission_power: 0.0,
         specular: 0.2,
         specular_scatter: 0.2,
@@ -220,7 +220,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     };
     let w_pawns_material = SceneMaterial {
         texture_index: 17,
-        roughness: 0.1,
+        roughness: 0.9,
         emission_power: 0.0,
         specular: 0.2,
         specular_scatter: 0.2,

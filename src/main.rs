@@ -74,7 +74,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let camera = Camera::new(size.width, size.height);
 
-    let scene = define_render_scene();
+    let scene: renderer::RenderScene = define_render_scene();
 
     let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
 
