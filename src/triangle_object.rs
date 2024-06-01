@@ -1,4 +1,4 @@
-use crate::buffers::{ObjectInfo, SceneTriangle};
+use crate::buffers::{ObjectInfo, SceneTriangle, SubObjectInfo};
 use glam::{vec3a, Mat3A, Vec3A};
 use std::fs::File;
 use std::io::BufReader;
@@ -15,19 +15,21 @@ pub struct ObjectCreation {
 
 pub fn load_stl_files(object_data_vec: &[ObjectCreation]) -> Vec<SceneObject> {
     let mut triangle_count = 0;
+    let mut sub_object_count = 0;
     let mut scene_object_vec = vec![];
 
     for obj_data in object_data_vec {
-        let new_obj = SceneObject::new(
+        let mut new_obj = SceneObject::new(
             &obj_data.file_path,
             obj_data.scale,
             obj_data.coordinates,
             obj_data.rotation,
             obj_data.material_index,
-            triangle_count,
         );
 
-        triangle_count += new_obj.object_triangles.len() as u32;
+        (sub_object_count, triangle_count) =
+            new_obj.create_sub_objects(sub_object_count, triangle_count);
+
         scene_object_vec.push(new_obj);
     }
 
@@ -44,7 +46,9 @@ pub struct SceneObject {
     pub center_location: Vec3A,
     pub material_index: u32,
     pub object_info: ObjectInfo,
+    pub sub_object_info: Vec<SubObjectInfo>,
     pub object_triangles: Vec<SceneTriangle>,
+    n_sub_object_triangels: usize,
 }
 
 impl SceneObject {
@@ -54,7 +58,6 @@ impl SceneObject {
         transformation: Vec3A,
         rotation: Vec3A,
         material_index: u32,
-        starting_triangle_index: u32,
     ) -> SceneObject {
         // Open the STL file
         let file = File::open(filepath).unwrap();
@@ -99,9 +102,9 @@ impl SceneObject {
 
         let object_info = ObjectInfo {
             min_bounds: min_coords.into(),
-            first_triangle_index: starting_triangle_index,
+            first_sub_object_index: 0, // temp values
             max_bounds: max_coords.into(),
-            triangle_count: triangles.len() as u32,
+            sub_object_count: 0, // temp values
             material_index,
             _padding: [0; 12],
         };
@@ -118,6 +121,8 @@ impl SceneObject {
             material_index,
             object_info,
             object_triangles: triangles,
+            sub_object_info: vec![],
+            n_sub_object_triangels: 7,
         }
     }
 
@@ -150,6 +155,63 @@ impl SceneObject {
 
     pub fn reset_rotation(&mut self) {
         self.rotation = Vec3A::ZERO;
+    }
+
+    pub fn create_sub_objects(
+        &mut self,
+        starting_sub_object_index: u32,
+        starting_triangle_index: u32,
+    ) -> (u32, u32) {
+        let mut sub_objects: Vec<SubObjectInfo> = vec![];
+
+        let mut triangle_counter = 0;
+
+        for subvec in self.object_triangles.chunks(self.n_sub_object_triangels) {
+            let all_min_bounds: Vec<Vec3A> = subvec.iter().map(|x| x.min_bounds.into()).collect();
+            let all_max_bounds: Vec<Vec3A> = subvec.iter().map(|x| x.max_bounds.into()).collect();
+
+            let (min_bounds, _) = get_bounding_box(&all_min_bounds);
+            let (_, max_bounds) = get_bounding_box(&all_max_bounds);
+
+            let new_sub_object = SubObjectInfo {
+                min_bounds: min_bounds.into(),
+                first_triangle_index: starting_triangle_index + triangle_counter,
+                max_bounds: max_bounds.into(),
+                triangle_count: subvec.len() as u32,
+            };
+
+            triangle_counter += subvec.len() as u32;
+
+            sub_objects.push(new_sub_object);
+        }
+
+        self.object_info.first_sub_object_index = starting_sub_object_index;
+        self.object_info.sub_object_count = sub_objects.len() as u32;
+        self.sub_object_info = sub_objects;
+
+        let ending_sub_object_index = starting_sub_object_index + self.object_info.sub_object_count;
+        let ending_triangles_index = starting_triangle_index + self.object_triangles.len() as u32;
+
+        (ending_sub_object_index, ending_triangles_index)
+    }
+
+    pub fn update_sub_objects(&mut self) {
+        for (i, subvec) in self
+            .object_triangles
+            .chunks(self.n_sub_object_triangels)
+            .enumerate()
+        {
+            let all_min_bounds: Vec<Vec3A> = subvec.iter().map(|x| x.min_bounds.into()).collect();
+            let all_max_bounds: Vec<Vec3A> = subvec.iter().map(|x| x.max_bounds.into()).collect();
+
+            let (min_bounds, _) = get_bounding_box(&all_min_bounds);
+            let (_, max_bounds) = get_bounding_box(&all_max_bounds);
+
+            let current_sub_obj = &mut self.sub_object_info[i];
+
+            current_sub_obj.min_bounds = min_bounds.into();
+            current_sub_obj.max_bounds = max_bounds.into();
+        }
     }
 }
 

@@ -13,6 +13,7 @@ const PI: f32 = 3.1415926536;
 @group(0) @binding(7) var<storage, read> triangle_array: array<SceneTriangle, 5552>;
 @group(0) @binding(8) var<uniform> object_array: array<ObjectInfo, 34>;
 @group(0) @binding(9) var texture_array: texture_2d_array<f32>;
+@group(0) @binding(10) var<storage, read> sub_object_array: array<SubObjectInfo, 288>;
 
 
 fn sample_texture(index: u32, coords: vec2<f32>, texture_size: vec2<i32>) -> vec3<f32> {
@@ -90,14 +91,22 @@ struct SceneTriangle {
 
 struct ObjectInfo {
     min_bounds: vec3<f32>,
-    first_triangle_index: u32,
+    first_sub_object_index: u32,
     max_bounds: vec3<f32>,
-    triangle_count: u32,
+    sub_object_count: u32,
     material_index: u32,
     _padding1: u32,
     _padding2: u32,
     _padding3: u32,
 }
+
+struct SubObjectInfo {
+    min_bounds: vec3<f32>,
+    first_triangle_index: u32,
+    max_bounds: vec3<f32>,
+    triangle_count: u32,
+}
+
 
 
 struct HitPayload {
@@ -396,80 +405,90 @@ fn check_triangles(ray: Ray) -> HitPayload{
             continue;
         }
 
-        for (var i: u32 = 0; i < object_info.triangle_count; i = i + 1) {
-            let triangle_index = object_info.first_triangle_index + i;
-            let tri: SceneTriangle = triangle_array[triangle_index];
+        for (var i: u32 = 0; i < object_info.sub_object_count; i = i + 1){
+            let sub_object_index = object_info.first_sub_object_index + i;
 
-            //quick way to filter out objects that can't be hit with ray
-            if !ray_in_bounds(ray, object_info.min_bounds, object_info.max_bounds){
-                continue;
-            }
-            
-            let determinant: f32 = -dot(ray.direction, tri.calc_normal);
+            let sub_object_info: SubObjectInfo = sub_object_array[sub_object_index];
 
-            let inv_det: f32 = 1 / determinant;
-            
-            let ao: vec3<f32> = ray.origin - tri.a; 
-
-            let distance: f32 = dot(ao, tri.calc_normal) * inv_det;
-
-            if distance < 0.0 || distance >= closest_distance {
-                continue;
+                        
+            if !ray_in_bounds(ray, sub_object_info.min_bounds, sub_object_info.max_bounds){
+                        continue;
             }
 
-            let dao: vec3<f32> = cross(ao, ray.direction); 
+            for (var j: u32 = 0; j < sub_object_info.triangle_count; j = j + 1) {
+                let triangle_index = sub_object_info.first_triangle_index + j;
+                let tri: SceneTriangle = triangle_array[triangle_index];
 
-            // calculate distance and intersection
+                //quick way to filter out objects that can't be hit with ray
+                if !ray_in_bounds(ray, tri.min_bounds, tri.max_bounds){
+                    continue;
+                }
+                
+                let determinant: f32 = -dot(ray.direction, tri.calc_normal);
 
-            let v: f32 = -dot(tri.edge_ab, dao) * inv_det;
+                let inv_det: f32 = 1 / determinant;
+                
+                let ao: vec3<f32> = ray.origin - tri.a; 
 
-            if v < 0.0 {
-                continue;
-            }
-            
-            let u: f32 = dot(tri.edge_ac, dao) * inv_det;
+                let distance: f32 = dot(ao, tri.calc_normal) * inv_det;
 
-            if u < 0.0 {
-                continue;
-            }
-            
-            let w: f32 = 1 - u - v;
+                if distance < 0.0 || distance >= closest_distance {
+                    continue;
+                }
 
-            if w < 0.0 {
-                continue;
-            }
+                let dao: vec3<f32> = cross(ao, ray.direction); 
 
-            var front_face: bool;
+                // calculate distance and intersection
 
-            var hitside_normal: vec3<f32>;
+                let v: f32 = -dot(tri.edge_ab, dao) * inv_det;
 
-            if determinant > 0.0 {
-                front_face = true;
-                hitside_normal = tri.face_normal;
-            }else{
-                front_face = false;
-                hitside_normal = -tri.face_normal;
-            }
+                if v < 0.0 {
+                    continue;
+                }
+                
+                let u: f32 = dot(tri.edge_ac, dao) * inv_det;
 
-            closest_distance = distance;
+                if u < 0.0 {
+                    continue;
+                }
+                
+                let w: f32 = 1 - u - v;
 
-            let hitpoint = ray.origin + ray.direction * distance;
+                if w < 0.0 {
+                    continue;
+                }
 
-            let texture_coords = object_texture_coords(hitpoint, object_info.min_bounds, object_info.max_bounds);
+                var front_face: bool;
+
+                var hitside_normal: vec3<f32>;
+
+                if determinant > 0.0 {
+                    front_face = true;
+                    hitside_normal = tri.face_normal;
+                }else{
+                    front_face = false;
+                    hitside_normal = -tri.face_normal;
+                }
+
+                closest_distance = distance;
+
+                let hitpoint = ray.origin + ray.direction * distance;
+
+                let texture_coords = object_texture_coords(hitpoint, object_info.min_bounds, object_info.max_bounds);
 
 
-            closest_hitpayload = HitPayload(
-                distance,
-                hitpoint,
-                hitside_normal,
-                object_info.material_index,
-                front_face,
-                texture_coords,
+                closest_hitpayload = HitPayload(
+                    distance,
+                    hitpoint,
+                    hitside_normal,
+                    object_info.material_index,
+                    front_face,
+                    texture_coords,
                 );
-  
+    
             };
-
-        };
+        }
+    };
 
     return closest_hitpayload;
 

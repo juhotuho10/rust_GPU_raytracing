@@ -45,20 +45,20 @@ pub struct SceneSphere {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SceneTriangle {
-    a: [f32; 3],           //
-    _padding: [u8; 4],     // padding to ensure 16-byte alignment
-    edge_ab: [f32; 3],     // vec3, aligned to 12 bytes
-    _padding2: [u8; 4],    // padding to ensure 16-byte alignment
-    edge_ac: [f32; 3],     // vec3, aligned to 12 bytes
-    _padding3: [u8; 4],    // padding to ensure 16-byte alignment
-    calc_normal: [f32; 3], // vec3, aligned to 12 bytes
-    _padding4: [u8; 4],    // padding to ensure 16-byte alignment
-    face_normal: [f32; 3], // vec3, aligned to 12 bytes
-    _padding5: [u8; 4],    // padding to ensure 16-byte alignment
-    min_bounds: [f32; 3],  // vec3, aligned to 12 bytes
-    _padding6: [u8; 4],    // padding to ensure 16-byte alignment
-    max_bounds: [f32; 3],  // vec3, aligned to 12 bytes
-    _padding7: [u8; 4],    // padding to ensure 16-byte alignment
+    a: [f32; 3],              //
+    _padding: [u8; 4],        // padding to ensure 16-byte alignment
+    edge_ab: [f32; 3],        // vec3, aligned to 12 bytes
+    _padding2: [u8; 4],       // padding to ensure 16-byte alignment
+    edge_ac: [f32; 3],        // vec3, aligned to 12 bytes
+    _padding3: [u8; 4],       // padding to ensure 16-byte alignment
+    calc_normal: [f32; 3],    // vec3, aligned to 12 bytes
+    _padding4: [u8; 4],       // padding to ensure 16-byte alignment
+    face_normal: [f32; 3],    // vec3, aligned to 12 bytes
+    _padding5: [u8; 4],       // padding to ensure 16-byte alignment
+    pub min_bounds: [f32; 3], // vec3, aligned to 12 bytes
+    _padding6: [u8; 4],       // padding to ensure 16-byte alignment
+    pub max_bounds: [f32; 3], // vec3, aligned to 12 bytes
+    _padding7: [u8; 4],       // padding to ensure 16-byte alignment
 }
 
 impl SceneTriangle {
@@ -110,12 +110,21 @@ pub struct SceneMaterial {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ObjectInfo {
+    pub min_bounds: [f32; 3],        // vec3, aligned to 12 bytes
+    pub first_sub_object_index: u32, // f32, aligned to 4 bytes
+    pub max_bounds: [f32; 3],        // vec3, aligned to 12 bytes
+    pub sub_object_count: u32,       // f32, aligned to 4 bytes
+    pub material_index: u32,         // f32, aligned to 4 bytes
+    pub _padding: [u8; 12],          // padding to ensure 16-byte alignment
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct SubObjectInfo {
     pub min_bounds: [f32; 3],      // vec3, aligned to 12 bytes
     pub first_triangle_index: u32, // f32, aligned to 4 bytes
     pub max_bounds: [f32; 3],      // vec3, aligned to 12 bytes
     pub triangle_count: u32,       // f32, aligned to 4 bytes
-    pub material_index: u32,       // f32, aligned to 4 bytes
-    pub _padding: [u8; 12],        // padding to ensure 16-byte alignment
 }
 
 pub struct DataBuffers {
@@ -130,6 +139,7 @@ pub struct DataBuffers {
     pub accumulation_buffer: Buffer,
     pub triangle_buffer: Buffer,
     pub object_buffer: Buffer,
+    pub sub_object_buffer: Buffer,
     pub image_textures: Texture,
 }
 
@@ -144,6 +154,7 @@ impl DataBuffers {
         sphere_array: &[SceneSphere],
         triangle_array: &[SceneTriangle],
         object_array: &[ObjectInfo],
+        sub_object_array: &[SubObjectInfo],
         params: &[Params],
     ) -> (DataBuffers, BindGroupLayout, BindGroup) {
         let ray_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -229,6 +240,13 @@ impl DataBuffers {
             view_formats: &[],
         });
 
+        let sub_object_buffer: Buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Sub Object Buffer"),
+                contents: bytemuck::cast_slice(sub_object_array),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            });
+
         let buffers = DataBuffers {
             output_buffer_size,
             accumulation_buffer_size,
@@ -241,6 +259,7 @@ impl DataBuffers {
             accumulation_buffer,
             triangle_buffer,
             object_buffer,
+            sub_object_buffer,
             image_textures,
         };
 
@@ -263,10 +282,7 @@ impl DataBuffers {
         let triangle_bind = 7;
         let object_bind = 8;
         let texture_bind = 9;
-
-        // ######################### GENERATE TEXTURE DATA #########################
-
-        // #########################################################################
+        let sub_object_bind = 10;
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -370,6 +386,16 @@ impl DataBuffers {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: sub_object_bind,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
             label: None,
         });
@@ -420,6 +446,10 @@ impl DataBuffers {
                             .image_textures
                             .create_view(&wgpu::TextureViewDescriptor::default()),
                     ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: sub_object_bind,
+                    resource: self.sub_object_buffer.as_entire_binding(),
                 },
             ],
             label: None,
@@ -499,6 +529,14 @@ impl DataBuffers {
             &self.object_buffer,
             0,
             bytemuck::cast_slice(new_object_info),
+        );
+    }
+
+    pub fn update_sub_object_info(&self, queue: &Queue, sub_object_array: &[SubObjectInfo]) {
+        queue.write_buffer(
+            &self.sub_object_buffer,
+            0,
+            bytemuck::cast_slice(sub_object_array),
         );
     }
 

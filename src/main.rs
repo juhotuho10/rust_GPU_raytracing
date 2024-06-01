@@ -97,7 +97,14 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         .map(|obj: &SceneObject| obj.object_triangles.len())
         .sum::<usize>() as u32;
 
+    let sub_object_count = scene
+        .objects
+        .iter()
+        .map(|obj: &SceneObject| obj.sub_object_info.len())
+        .sum::<usize>() as u32;
+
     dbg!(triangle_count);
+    dbg!(sub_object_count);
     dbg!(scene.spheres.len());
     dbg!(scene.objects.len());
     dbg!(scene.materials.len());
@@ -591,7 +598,7 @@ async fn create_adapter(instance: &wgpu::Instance, surface: &Surface<'_>) -> wgp
 
 async fn generate_device_and_queue(adapter: &Adapter) -> (Device, Queue) {
     let adapter_limits = wgpu::Limits {
-        max_storage_buffers_per_shader_stage: 5,
+        max_storage_buffers_per_shader_stage: 6,
         ..wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits())
     };
     adapter
@@ -655,7 +662,7 @@ fn create_ui(
         .resizable(false)
         .frame(transparent_frame)
         .show(&egui_context, |ui| {
-            ui.set_max_width(160.0);
+            ui.set_max_width(180.0);
 
             ui.label(format!("fps: {}", compute_per_second));
 

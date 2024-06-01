@@ -65,7 +65,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     let glossy_pink = SceneMaterial {
         texture_index: 2,
         roughness: 0.7,
-        emission_power: 0.0,
+        emission_power: 5.0,
         specular: 0.5,
         specular_scatter: 0.1,
         glass: 0.0,
@@ -76,7 +76,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     let shiny_orange = SceneMaterial {
         texture_index: 3,
         roughness: 0.3,
-        emission_power: 10.0,
+        emission_power: 15.0,
         specular: 0.3,
         specular_scatter: 0.1,
         glass: 0.0,
@@ -231,10 +231,10 @@ pub(crate) fn define_render_scene() -> RenderScene {
 
     let chess_board_material = SceneMaterial {
         texture_index: 18,
-        roughness: 0.8,
+        roughness: 0.6,
         emission_power: 0.0,
-        specular: 0.2,
-        specular_scatter: 0.5,
+        specular: 0.3,
+        specular_scatter: 0.1,
         glass: 0.0,
         refraction_index: 1.0,
         _padding: [0; 4],
@@ -243,21 +243,21 @@ pub(crate) fn define_render_scene() -> RenderScene {
     // ###########################################################################
 
     let sphere_a: SceneSphere = SceneSphere {
-        position: [1., -0.5, -2.],
+        position: [1., -1.2, -2.],
         radius: 0.5,
         material_index: 2,
         _padding: [0; 12],
     };
 
     let sphere_b: SceneSphere = SceneSphere {
-        position: [-3., -2.0, 3.],
+        position: [-5., -2.0, 9.],
         radius: 2.0,
         material_index: 0,
         _padding: [0; 12],
     };
 
     let shiny_sphere: SceneSphere = SceneSphere {
-        position: [3., -15.0, -5.],
+        position: [3., -25.0, -5.],
         radius: 7.0,
         material_index: 3,
         _padding: [0; 12],

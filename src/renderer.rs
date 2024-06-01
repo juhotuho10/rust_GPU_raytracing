@@ -1,4 +1,6 @@
-use crate::buffers::{ObjectInfo, Params, RayCamera, SceneMaterial, SceneSphere, SceneTriangle};
+use crate::buffers::{
+    ObjectInfo, Params, RayCamera, SceneMaterial, SceneSphere, SceneTriangle, SubObjectInfo,
+};
 
 use crate::triangle_object::SceneObject;
 
@@ -47,7 +49,7 @@ impl Renderer<'_> {
         let camera_rays = camera.recalculate_ray_directions();
         let accumulate = params.accumulate == 1;
 
-        let (object_info_vec, triangles) = get_triangle_data(&scene);
+        let (object_info_vec, sub_object_info_vec, triangles) = get_triangle_data(&scene);
 
         let ray_camera: RayCamera = RayCamera {
             origin: camera.position.into(),
@@ -63,6 +65,7 @@ impl Renderer<'_> {
             &scene.spheres,
             &triangles,
             &object_info_vec,
+            &sub_object_info_vec,
             &[params],
         );
 
@@ -151,6 +154,10 @@ impl Renderer<'_> {
             texture.update_color();
         }
 
+        for object in &mut self.scene.objects {
+            object.update_sub_objects();
+        }
+
         self.buffers.update_texture_buffer(
             &self.scene.image_textures,
             self.queue,
@@ -158,12 +165,15 @@ impl Renderer<'_> {
             self.scene.texture_size[1],
         );
 
-        let (new_object_info, new_triangles) = get_triangle_data(&self.scene);
+        let (new_object_info, old_sub_object_info, new_triangles) = get_triangle_data(&self.scene);
 
         self.buffers.update_triangles(self.queue, &new_triangles);
 
         self.buffers
             .update_object_info(self.queue, &new_object_info);
+
+        self.buffers
+            .update_sub_object_info(self.queue, &old_sub_object_info);
 
         let new_materials = &self.scene.materials;
         self.buffers.update_materials(self.queue, new_materials);
@@ -264,11 +274,20 @@ impl Renderer<'_> {
     }
 }
 
-pub fn get_triangle_data(scene: &RenderScene) -> (Vec<ObjectInfo>, Vec<SceneTriangle>) {
+pub fn get_triangle_data(
+    scene: &RenderScene,
+) -> (Vec<ObjectInfo>, Vec<SubObjectInfo>, Vec<SceneTriangle>) {
     let object_info_vec: Vec<ObjectInfo> = scene
         .objects
         .iter()
         .map(|object| object.object_info)
+        .collect();
+
+    // generate new object info
+    let sub_object_info_vec: Vec<SubObjectInfo> = scene
+        .objects
+        .iter()
+        .flat_map(|object| object.sub_object_info.clone())
         .collect();
 
     let triangles: Vec<_> = scene
@@ -276,5 +295,5 @@ pub fn get_triangle_data(scene: &RenderScene) -> (Vec<ObjectInfo>, Vec<SceneTria
         .iter()
         .flat_map(|object| object.object_triangles.clone())
         .collect();
-    (object_info_vec, triangles)
+    (object_info_vec, sub_object_info_vec, triangles)
 }
