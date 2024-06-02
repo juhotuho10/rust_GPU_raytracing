@@ -60,7 +60,7 @@ impl SceneObject {
         material_index: u32,
     ) -> SceneObject {
         // Open the STL file
-        let file = File::open(filepath).unwrap();
+        let file = File::open(filepath).expect("could not open STL file from path");
         let mut reader = BufReader::new(file);
 
         assert!(scale > 0.0, "scale has to be over 0.0");
@@ -167,11 +167,12 @@ impl SceneObject {
         let mut triangle_counter = 0;
 
         for subvec in self.object_triangles.chunks(self.n_sub_object_triangels) {
-            let all_min_bounds: Vec<Vec3A> = subvec.iter().map(|x| x.min_bounds.into()).collect();
-            let all_max_bounds: Vec<Vec3A> = subvec.iter().map(|x| x.max_bounds.into()).collect();
+            let all_bounds: Vec<Vec3A> = subvec
+                .iter()
+                .flat_map(|x| vec![x.min_bounds.into(), x.max_bounds.into()])
+                .collect();
 
-            let (min_bounds, _) = get_bounding_box(&all_min_bounds);
-            let (_, max_bounds) = get_bounding_box(&all_max_bounds);
+            let (min_bounds, max_bounds) = get_bounding_box(&all_bounds);
 
             let new_sub_object = SubObjectInfo {
                 min_bounds: min_bounds.into(),
@@ -201,11 +202,12 @@ impl SceneObject {
             .chunks(self.n_sub_object_triangels)
             .enumerate()
         {
-            let all_min_bounds: Vec<Vec3A> = subvec.iter().map(|x| x.min_bounds.into()).collect();
-            let all_max_bounds: Vec<Vec3A> = subvec.iter().map(|x| x.max_bounds.into()).collect();
+            let all_bounds: Vec<Vec3A> = subvec
+                .iter()
+                .flat_map(|x| vec![x.min_bounds.into(), x.max_bounds.into()])
+                .collect();
 
-            let (min_bounds, _) = get_bounding_box(&all_min_bounds);
-            let (_, max_bounds) = get_bounding_box(&all_max_bounds);
+            let (min_bounds, max_bounds) = get_bounding_box(&all_bounds);
 
             let current_sub_obj = &mut self.sub_object_info[i];
 

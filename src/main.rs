@@ -37,7 +37,7 @@ use egui_winit_platform::{Platform, PlatformDescriptor};
 use std::time::Instant;
 
 pub fn main() {
-    let event_loop = EventLoop::new().unwrap();
+    let event_loop = EventLoop::new().expect("failed to make eventloop");
 
     let builder = winit::window::WindowBuilder::new();
 
@@ -48,7 +48,7 @@ pub fn main() {
     let window = builder
         .with_inner_size(window_size)
         .build(&event_loop)
-        .unwrap();
+        .expect("failed to make window");
 
     window.set_resizable(false);
     env_logger::init();
@@ -86,7 +86,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     let instance = generate_instance();
 
-    let surface: Surface = instance.create_surface(&window).unwrap();
+    let surface: Surface = instance
+        .create_surface(&window)
+        .expect("failed to make a surface");
     let adapter = create_adapter(&instance, &surface).await;
     // Create the logical device and command queue
     let (device, queue) = generate_device_and_queue(&adapter).await;
@@ -103,6 +105,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         .map(|obj: &SceneObject| obj.sub_object_info.len())
         .sum::<usize>() as u32;
 
+    println!("the following numbers should be the same in the compute shader for the buffers");
     dbg!(triangle_count);
     dbg!(sub_object_count);
     dbg!(scene.spheres.len());
@@ -276,37 +279,47 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                             ..
                         } => match state {
                             ElementState::Pressed => {
-                                movement_mode = true;
+                                let grabbed = window.set_cursor_grab(CursorGrabMode::Confined);
 
-                                window
-                                    .set_cursor_grab(CursorGrabMode::Confined)
-                                    .expect("couldn't confine cursor");
-
-                                window.set_cursor_visible(false);
-
-                                last_mouse_pos = platform
+                                let possible_pos = platform
                                     .context()
-                                    .input(|i: &egui::InputState| i.pointer.hover_pos())
-                                    .unwrap();
+                                    .input(|i: &egui::InputState| i.pointer.hover_pos());
 
-                                current_mouse_pos = mouse_resting_position;
+                                match (grabbed, possible_pos) {
+                                    (Ok(_), Some(pos)) => {
+                                        movement_mode = true;
+
+                                        window.set_cursor_visible(false);
+
+                                        last_mouse_pos = pos;
+                                        current_mouse_pos = mouse_resting_position;
+                                    }
+                                    (Err(error), _) => {
+                                        println!("cound not grab the cursor, {}", error)
+                                    }
+
+                                    (_, _) => println!("could not find cursor position"),
+                                }
 
                                 window.request_redraw();
                             }
                             ElementState::Released => {
                                 // Logic when right mouse button is released
-                                movement_mode = false;
-                                window
-                                    .set_cursor_grab(CursorGrabMode::None)
-                                    .expect("Failed to release cursor");
+
+                                let grab_release = window.set_cursor_grab(CursorGrabMode::None);
                                 window.set_cursor_visible(true);
 
-                                window
-                                    .set_cursor_position(PhysicalPosition::new(
-                                        last_mouse_pos.x as u32,
-                                        last_mouse_pos.y as u32,
-                                    ))
-                                    .expect("couldn't set cursor pos");
+                                let pos_set = window.set_cursor_position(PhysicalPosition::new(
+                                    last_mouse_pos.x as u32,
+                                    last_mouse_pos.y as u32,
+                                ));
+
+                                match (grab_release, pos_set) {
+                                    (Ok(_), _) => movement_mode = false,
+                                    (Err(error), _) => {
+                                        println!("could not release cursor, {}", error)
+                                    }
+                                }
 
                                 window.request_redraw();
                             }
@@ -333,12 +346,10 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 fps_timer = Instant::now();
 
                                 if movement_mode {
-                                    window
-                                        .set_cursor_position(PhysicalPosition::new(
-                                            mouse_resting_position.x,
-                                            mouse_resting_position.y,
-                                        ))
-                                        .expect("couldn't set cursor pos");
+                                    let _ = window.set_cursor_position(PhysicalPosition::new(
+                                        mouse_resting_position.x,
+                                        mouse_resting_position.y,
+                                    ));
                                 }
 
                                 let mut encoder = device.create_command_encoder(
@@ -424,7 +435,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                                 egui_rpass
                                     .remove_textures(full_output.textures_delta)
-                                    .expect("textures removed");
+                                    .expect("textures could not be removed");
 
                                 //-------------
 
@@ -453,7 +464,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                 } // Handle other types of events that are not window events
             }
         })
-        .unwrap();
+        .expect("Eventloop failed");
 }
 
 fn create_texture(device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) -> wgpu::Texture {
