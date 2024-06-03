@@ -105,7 +105,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         .map(|obj: &SceneObject| obj.sub_object_info.len())
         .sum::<usize>() as u32;
 
-    println!("the following numbers should be the same in the compute shader for the buffers");
+    println!("the following numbers should be the same in the compute shader for the buffer sizes");
     dbg!(triangle_count);
     dbg!(sub_object_count);
     dbg!(scene.spheres.len());
@@ -257,6 +257,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                         WindowEvent::CloseRequested => {
                             // Exit the application
+                            device.poll(wgpu::MaintainBase::Wait);
                             target.exit();
                         }
 
@@ -465,6 +466,11 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
             }
         })
         .expect("Eventloop failed");
+
+    // explicitly dropping the data and GPU buffers in a safe manner, otherwise we get an error for exiting the application
+    drop(scene_renderer);
+    drop(device);
+    drop(queue);
 }
 
 fn create_texture(device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) -> wgpu::Texture {
@@ -650,6 +656,25 @@ fn generate_instance() -> Instance {
 }
 
 // ######################### UI CREATION ########################################
+
+// simple macro for makíng the UI more compact
+macro_rules! create_drag_value {
+    ($ui:expr, $value:expr, $speed:expr, $range:expr, $prefix:expr) => {{
+        if $ui
+            .add(
+                DragValue::new($value)
+                    .speed($speed)
+                    .clamp_range($range)
+                    .prefix($prefix),
+            )
+            .changed()
+        {
+            true
+        } else {
+            false
+        }
+    }};
+}
 
 fn create_ui(
     platform: &mut Platform,
@@ -887,24 +912,4 @@ fn ui_material_selection(
             *interacted = true;
         }
     });
-}
-
-// simple macro for makíng the UI more compact
-#[macro_export]
-macro_rules! create_drag_value {
-    ($ui:expr, $value:expr, $speed:expr, $range:expr, $prefix:expr) => {{
-        if $ui
-            .add(
-                DragValue::new($value)
-                    .speed($speed)
-                    .clamp_range($range)
-                    .prefix($prefix),
-            )
-            .changed()
-        {
-            true
-        } else {
-            false
-        }
-    }};
 }

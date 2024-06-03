@@ -13,7 +13,7 @@ const PI: f32 = 3.1415926536;
 @group(0) @binding(7) var<storage, read> triangle_array: array<SceneTriangle, 5552>;
 @group(0) @binding(8) var<uniform> object_array: array<ObjectInfo, 34>;
 @group(0) @binding(9) var texture_array: texture_2d_array<f32>;
-@group(0) @binding(10) var<storage, read> sub_object_array: array<SubObjectInfo, 288>;
+@group(0) @binding(10) var<storage, read> sub_object_array: array<SubObjectInfo, 802>;
 
 
 fn sample_texture(index: u32, coords: vec2<f32>, texture_size: vec2<i32>) -> vec3<f32> {
@@ -217,9 +217,6 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
 
         let diffuse_direction: vec3<f32> = normalize(hit_payload.hitside_normal + random_normal_scaler(&seed));
         let specular_direction: vec3<f32> = reflect(ray.direction, hit_payload.hitside_normal);
-
-        //let current_color = current_material.albedo;
-
    
         let texture_size = vec2<i32>(i32(params.texture_width), i32(params.texture_height));
 
@@ -412,17 +409,12 @@ fn check_triangles(ray: Ray) -> HitPayload{
 
                         
             if !ray_in_bounds(ray, sub_object_info.min_bounds, sub_object_info.max_bounds){
-                        continue;
+                continue;
             }
 
             for (var j: u32 = 0; j < sub_object_info.triangle_count; j = j + 1) {
                 let triangle_index = sub_object_info.first_triangle_index + j;
                 let tri: SceneTriangle = triangle_array[triangle_index];
-
-                //quick way to filter out objects that can't be hit with ray
-                if !ray_in_bounds(ray, tri.min_bounds, tri.max_bounds){
-                    continue;
-                }
                 
                 let determinant: f32 = -dot(ray.direction, tri.calc_normal);
 

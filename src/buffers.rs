@@ -127,6 +127,15 @@ pub struct SubObjectInfo {
     pub triangle_count: u32,       // f32, aligned to 4 bytes
 }
 
+macro_rules! bind_group_entry {
+    ($binding:expr, $resource:expr) => {
+        wgpu::BindGroupEntry {
+            binding: $binding,
+            resource: $resource.as_entire_binding(),
+        }
+    };
+}
+
 pub struct DataBuffers {
     pub output_buffer_size: u64,
     pub accumulation_buffer_size: u64,
@@ -164,7 +173,7 @@ impl DataBuffers {
         });
 
         // 4 bytes of u8 per pixel, RGBA
-        let output_buffer_size = (size.width * size.height * 4 * std::mem::size_of::<u8>() as u32)
+        let output_buffer_size = (size.width * size.height * std::mem::size_of::<[u8; 4]>() as u32)
             as wgpu::BufferAddress;
 
         let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -198,7 +207,7 @@ impl DataBuffers {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // 3 bytes of f32 per pixel
+        // 4 bytes of RGBA f32 per pixel
         let accumulation_buffer_size =
             (size.width * size.height * std::mem::size_of::<[f32; 4]>() as u32)
                 as wgpu::BufferAddress;
@@ -403,42 +412,15 @@ impl DataBuffers {
         let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &bind_group_layout,
             entries: &[
-                wgpu::BindGroupEntry {
-                    binding: params_bind,
-                    resource: self.params_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: ray_directions_bind,
-                    resource: self.ray_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: pixel_colors_bind,
-                    resource: self.output_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: camera_bind,
-                    resource: self.camera_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: material_bind,
-                    resource: self.material_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: sphere_bind,
-                    resource: self.sphere_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: accumulation_bind,
-                    resource: self.accumulation_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: triangle_bind,
-                    resource: self.triangle_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: object_bind,
-                    resource: self.object_buffer.as_entire_binding(),
-                },
+                bind_group_entry!(params_bind, self.params_buffer),
+                bind_group_entry!(ray_directions_bind, self.ray_buffer),
+                bind_group_entry!(pixel_colors_bind, self.output_buffer),
+                bind_group_entry!(camera_bind, self.camera_buffer),
+                bind_group_entry!(material_bind, self.material_buffer),
+                bind_group_entry!(sphere_bind, self.sphere_buffer),
+                bind_group_entry!(accumulation_bind, self.accumulation_buffer),
+                bind_group_entry!(triangle_bind, self.triangle_buffer),
+                bind_group_entry!(object_bind, self.object_buffer),
                 wgpu::BindGroupEntry {
                     binding: texture_bind,
                     resource: wgpu::BindingResource::TextureView(
@@ -447,10 +429,7 @@ impl DataBuffers {
                             .create_view(&wgpu::TextureViewDescriptor::default()),
                     ),
                 },
-                wgpu::BindGroupEntry {
-                    binding: sub_object_bind,
-                    resource: self.sub_object_buffer.as_entire_binding(),
-                },
+                bind_group_entry!(sub_object_bind, self.sub_object_buffer),
             ],
             label: None,
         });
