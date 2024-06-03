@@ -9,7 +9,7 @@ const PI: f32 = 3.1415926536;
 @group(0) @binding(3) var<uniform> ray_camera: RayCamera;
 @group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, 19>;
 @group(0) @binding(5) var<uniform> sphere_array: array<SceneSphere, 3>;
-@group(0) @binding(6) var<storage, read_write> accumulation_data: array<vec3<f32>>;
+@group(0) @binding(6) var<storage, read_write> accumulation_data: array<vec4<f32>>;
 @group(0) @binding(7) var<storage, read> triangle_array: array<SceneTriangle, 5552>;
 @group(0) @binding(8) var<uniform> object_array: array<ObjectInfo, 34>;
 @group(0) @binding(9) var texture_array: texture_2d_array<f32>;
@@ -17,20 +17,20 @@ const PI: f32 = 3.1415926536;
 @group(0) @binding(11) var environment_map: texture_2d<f32>;
 
 
-fn sample_texture(index: u32, coords: vec2<f32>, texture_size: vec2<i32>) -> vec3<f32> {
+fn sample_texture(index: u32, coords: vec2<f32>, texture_size: vec2<i32>) -> vec4<f32> {
     let texel_coords = vec2<i32>(coords * vec2<f32>(texture_size));
 
     let color = textureLoad(texture_array, texel_coords, i32(index), 0);
 
-    return color.rgb;
+    return color;
 }
 
-fn sample_env_map(coords: vec2<f32>, texture_size: vec2<i32>) -> vec3<f32> {
+fn sample_env_map(coords: vec2<f32>, texture_size: vec2<i32>) -> vec4<f32> {
     let texel_coords = vec2<i32>(coords * vec2<f32>(texture_size));
 
     let color = textureLoad(environment_map, texel_coords, 0);
 
-    return color.rgb;
+    return color;
 }
 
 
@@ -143,11 +143,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let bounces: u32 = 10u;
 
-    var render_color = vec3<f32>(0.0);
+    var render_color = vec4<f32>(0.0);
 
     var random_index = params.accumulation_index;
 
-    var pixel_color = accumulation_data[index];
+    var pixel_color: vec4<f32> = accumulation_data[index];
 
     if params.accumulate == 1{
 
@@ -157,15 +157,15 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
         accumulation_data[index] = pixel_color;
 
-        var accumulated_color = pixel_color / f32(params.accumulation_index * params.compute_per_frame);
+        var accumulated_color: vec4<f32> = pixel_color / f32(params.accumulation_index * params.compute_per_frame);
 
-        render_color = clamp(accumulated_color, vec3<f32>(0.0), vec3<f32>(1.0));
+        render_color = clamp(accumulated_color, vec4<f32>(0.0), vec4<f32>(1.0));
         
 
     }else{
 
-        let f32_color: vec3<f32> = per_pixel(index, bounces, random_index);
-        render_color = clamp(f32_color, vec3<f32>(0.0), vec3<f32>(1.0));
+        let f32_color: vec4<f32> = per_pixel(index, bounces, random_index);
+        render_color = clamp(f32_color, vec4<f32>(0.0), vec4<f32>(1.0));
     }
     
     // pack 4 f32 values into a single u32 (4x u8 rgba color)
@@ -183,22 +183,25 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 }
 
 
-fn pack_to_u32(vector: vec3<f32>) -> u32 {
+fn pack_to_u32(vector: vec4<f32>) -> u32 {
   // scale the f32 values from [0.0, 1.0] to [0.0, 255.0]
-    let scaled_x: u32 = u32(vector.x * 255.0);
-    let scaled_y: u32 = u32(vector.y * 255.0);
-    let scaled_z: u32 = u32(vector.z * 255.0);
+    let scaled_r: u32 = u32(vector.r * 255.0);
+    let scaled_g: u32 = u32(vector.g * 255.0);
+    let scaled_b: u32 = u32(vector.b * 255.0);
+    let scaled_a: u32 = u32(vector.a * 255.0);
+
 
     // extract the least significant 8 bits (same as converting to u8)
-    let byte0: u32 = scaled_x & 0xFFu;
-    let byte1: u32 = scaled_y & 0xFFu;
-    let byte2: u32 = scaled_z & 0xFFu;
+    let byte0: u32 = scaled_r & 0xFFu;
+    let byte1: u32 = scaled_g & 0xFFu;
+    let byte2: u32 = scaled_b & 0xFFu;
+    let byte3: u32 = scaled_a & 0xFFu;
 
     // pack the bits into a single u32 that will then be read as 4x u8 by the rendering pass
-    return (byte0 << 0) | (byte1 << 8) | (byte2 << 16) | (255u << 24);
+    return (byte0 << 0) | (byte1 << 8) | (byte2 << 16) | (byte3 << 24);
 }
 
-fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
+fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
 
     var ray = Ray( 
         ray_camera.origin,
@@ -209,8 +212,8 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
 
     ray.direction += random_scaler(&seed) * 0.0005;
     
-    var light_contribution = vec3<f32>(1.0);
-    var light = vec3<f32>(0.0);
+    var light_contribution = vec4<f32>(1.0);
+    var light = vec4<f32>(0.0);
 
     
 
@@ -225,7 +228,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
             let uv: vec2<f32> = environment_map_coords(ray.direction);
             let texture_size = vec2<i32>(i32(params.env_map_width), i32(params.env_map_height));
 
-            let color = sample_env_map(uv, texture_size);
+            let color: vec4<f32>  = sample_env_map(uv, texture_size);
 
             light += color * light_contribution;
             break;
@@ -239,7 +242,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
    
         let texture_size = vec2<i32>(i32(params.texture_width), i32(params.texture_height));
 
-        let current_color = sample_texture(current_material.texture_index, hit_payload.texture_point, texture_size);
+        let current_color: vec4<f32> = sample_texture(current_material.texture_index, hit_payload.texture_point, texture_size);
 
         let emitted_light = current_color * current_material.emission_power;
         light += emitted_light * light_contribution;

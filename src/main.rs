@@ -18,9 +18,9 @@ use triangle_object::SceneObject;
 use egui::{pos2, Color32, DragValue, Frame, FullOutput};
 
 use wgpu::{
-    include_wgsl, Adapter, Backends, BindGroup, Device, Dx12Compiler, Gles3MinorVersion, Instance,
-    InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages,
+    include_wgsl, Adapter, Backends, BindGroup, BlendState, Device, Dx12Compiler,
+    Gles3MinorVersion, Instance, InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
 
 use winit::{
@@ -164,6 +164,8 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         bind_group_layouts: &[&bind_group_layout],
         push_constant_ranges: &[],
     });
+
+    dbg!(texture.format());
 
     let render_pipeline = create_render_pipeline(&device, &pipeline_layout, texture.format());
 
@@ -592,7 +594,11 @@ fn create_render_pipeline(
                 module: &shader,
                 entry_point: "fs_main",
                 compilation_options: Default::default(),
-                targets: &[Some(swapchain_format.into())],
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: swapchain_format,
+                    blend: Some(BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
             }),
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
