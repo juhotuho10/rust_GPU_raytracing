@@ -25,8 +25,12 @@ pub(crate) fn define_render_scene() -> RenderScene {
     let rough_blue_texture = ImageTexture::new_from_color([0.0, 0.6, 1.0], texture_size); // 2
     let glossy_pink_texture = ImageTexture::new_from_color([1.0, 0.1, 0.1], texture_size); // 2
     let shiny_orange_texture = ImageTexture::new_from_color([1.0, 0.7, 0.0], texture_size); // 3
-    let cool_red_texture = ImageTexture::new_from_color([1.0, 0.0, 0.4], texture_size); // 4
+
+    // let cool_red_texture = ImageTexture::new_from_color([1.0, 0.0, 0.4], texture_size); // 4
+    let earth_texture = ImageTexture::new_from_image("./textures/earth.png", texture_size); // 4
     let shiny_white_texture = ImageTexture::new_from_color([1.0, 1.0, 1.0], texture_size); // 5
+
+    let _earth_texture = ImageTexture::new_from_image("./textures/earth.png", texture_size);
 
     // ###################### chess textures #####################################
 
@@ -92,14 +96,14 @@ pub(crate) fn define_render_scene() -> RenderScene {
         _padding: [0; 4],
     };
 
-    let cool_red = SceneMaterial {
+    let earth_material = SceneMaterial {
         texture_index: 4,
         roughness: 0.9,
-        emission_power: 0.0,
-        specular: 0.5,
-        specular_scatter: 0.4,
-        glass: 1.0,
-        refraction_index: 1.5,
+        emission_power: 2.0,
+        specular: 0.0,
+        specular_scatter: 1.0,
+        glass: 0.0,
+        refraction_index: 1.0,
         _padding: [0; 4],
     };
 
@@ -260,7 +264,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
     let sphere_b: SceneSphere = SceneSphere {
         position: [-5., -2.0, 9.],
         radius: 2.0,
-        material_index: 0,
+        material_index: 4,
         _padding: [0; 12],
     };
 
@@ -552,7 +556,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
             rough_blue_texture,
             glossy_pink_texture,
             shiny_orange_texture,
-            cool_red_texture,
+            earth_texture,
             shiny_white_texture,
             b_queen_texture,
             b_king_texture,
@@ -575,7 +579,7 @@ pub(crate) fn define_render_scene() -> RenderScene {
             rough_blue,
             glossy_pink,
             shiny_orange,
-            cool_red,
+            earth_material,
             shiny_white,
             b_queen_material,
             b_king_material,
