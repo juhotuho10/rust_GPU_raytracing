@@ -21,8 +21,8 @@ pub struct RenderScene {
     pub image_textures: Vec<ImageTexture>,
     pub materials: Vec<SceneMaterial>,
     pub objects: Vec<SceneObject>,
-    pub sky_color: [f32; 3],
     pub environment_map: ImageTexture,
+    pub env_map_size: [u32; 2],
 }
 
 pub struct Renderer<'a> {
@@ -77,7 +77,12 @@ impl Renderer<'_> {
             scene.texture_size[1],
         );
 
-        buffers.update_environment_map_buffer(&scene.environment_map, queue, 8192, 4096);
+        buffers.update_environment_map_buffer(
+            &scene.environment_map,
+            queue,
+            scene.env_map_size[0],
+            scene.env_map_size[1],
+        );
 
         let renderer = Renderer {
             camera,
@@ -127,7 +132,6 @@ impl Renderer<'_> {
         self.accumulation_index = 1;
 
         let params = Params {
-            sky_color: self.scene.sky_color,
             screen_width: self.camera.viewport_width,
             accumulation_index: self.accumulation_index,
             accumulate: self.accumulate as u32,
@@ -137,6 +141,9 @@ impl Renderer<'_> {
             texture_width: self.scene.texture_size[0],
             texture_height: self.scene.texture_size[1],
             textue_count: self.scene.image_textures.len() as u32,
+            env_map_width: self.scene.env_map_size[0],
+            env_map_height: self.scene.env_map_size[1],
+            _padding: [0; 4],
         };
 
         self.buffers
@@ -157,6 +164,8 @@ impl Renderer<'_> {
             texture.update_color();
         }
 
+        self.scene.environment_map.update_color();
+
         for object in &mut self.scene.objects {
             object.update_sub_objects();
         }
@@ -166,6 +175,13 @@ impl Renderer<'_> {
             self.queue,
             self.scene.texture_size[0],
             self.scene.texture_size[1],
+        );
+
+        self.buffers.update_environment_map_buffer(
+            &self.scene.environment_map,
+            self.queue,
+            self.scene.env_map_size[0],
+            self.scene.env_map_size[1],
         );
 
         let (new_object_info, old_sub_object_info, new_triangles) = get_triangle_data(&self.scene);
@@ -199,7 +215,6 @@ impl Renderer<'_> {
 
         if self.accumulate {
             let params = Params {
-                sky_color: self.scene.sky_color,
                 screen_width: width,
                 accumulation_index: self.accumulation_index,
                 accumulate: self.accumulate as u32,
@@ -209,6 +224,9 @@ impl Renderer<'_> {
                 texture_width: self.scene.texture_size[0],
                 texture_height: self.scene.texture_size[1],
                 textue_count: self.scene.image_textures.len() as u32,
+                env_map_width: self.scene.env_map_size[0],
+                env_map_height: self.scene.env_map_size[1],
+                _padding: [0; 4],
             };
 
             self.buffers.update_accumulation(self.queue, &[params]);

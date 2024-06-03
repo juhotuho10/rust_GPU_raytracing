@@ -24,14 +24,6 @@ impl ImageTexture {
         }
     }
 
-    pub fn new_environment_map(path: &str, texture_size: [u32; 2]) -> ImageTexture {
-        ImageTexture {
-            from_color: false,
-            color: None,
-            image_buffer: load_png_image(path, texture_size),
-        }
-    }
-
     pub fn update_color(&mut self) {
         // we dont recolor textures that were loaded from files
         if let Some(color) = self.color {

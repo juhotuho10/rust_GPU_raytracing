@@ -7,7 +7,6 @@ use super::image_texture::*;
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Params {
-    pub sky_color: [f32; 3],     // vec3, aligned to 12 bytes
     pub screen_width: u32,       // float, aligned to 4 bytes
     pub accumulation_index: u32, // u32, aligned to 4 bytes
     pub accumulate: u32,         // u32, aligned to 4 bytes
@@ -17,6 +16,9 @@ pub struct Params {
     pub texture_width: u32,      // u32, aligned to 4 bytes
     pub texture_height: u32,     // u32, aligned to 4 bytes
     pub textue_count: u32,       // u32, aligned to 4 bytes
+    pub env_map_width: u32,      // u32, aligned to 4 bytes
+    pub env_map_height: u32,     // u32, aligned to 4 bytes
+    pub _padding: [u8; 4],       // padding to ensure 16-byte alignment
 }
 
 #[repr(C)]
@@ -258,8 +260,8 @@ impl DataBuffers {
             });
 
         let env_map_size = wgpu::Extent3d {
-            width: 8192,
-            height: 4096,
+            width: params[0].env_map_width,
+            height: params[0].env_map_height,
             depth_or_array_layers: 1,
         };
 

@@ -116,7 +116,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let params = Params {
         screen_width: size.width,
         accumulation_index: 1,
-        sky_color: scene.sky_color,
         accumulate: 1,
         sphere_count: scene.spheres.len() as u32,
         object_count: scene.objects.len() as u32,
@@ -124,6 +123,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         texture_width: scene.texture_size[0],
         texture_height: scene.texture_size[1],
         textue_count: scene.image_textures.len() as u32,
+        env_map_width: scene.env_map_size[0],
+        env_map_height: scene.env_map_size[1],
+        _padding: [0; 4],
     };
 
     let (mut scene_renderer, compute_bindgroup_layout, compute_bind_group) =
@@ -703,14 +705,17 @@ fn create_ui(
             ui.label(format!("fps: {}", compute_per_second));
 
             ui.vertical_centered(|ui| {
-                ui.label("sky color:");
-                if ui
-                    .color_edit_button_rgb(&mut screne_renderer.scene.sky_color)
-                    .on_hover_text("color")
-                    .changed()
-                {
-                    interacted = true;
-                };
+                let sky_color = &mut screne_renderer.scene.environment_map.color;
+                if let Some(sky_color) = sky_color {
+                    ui.label("sky color:");
+                    if ui
+                        .color_edit_button_rgb(sky_color)
+                        .on_hover_text("color")
+                        .changed()
+                    {
+                        interacted = true;
+                    };
+                }
 
                 if ui
                     .checkbox(&mut screne_renderer.accumulate, "light accumulation")

@@ -35,7 +35,6 @@ fn sample_env_map(coords: vec2<f32>, texture_size: vec2<i32>) -> vec3<f32> {
 
 
 struct Params {
-    sky_color: vec3<f32>,
     width: u32,
     accumulation_index: u32,
     accumulate: u32,
@@ -45,7 +44,11 @@ struct Params {
     texture_width: u32,
     texture_height: u32,
     textue_count: u32,
-
+    env_map_width: u32,
+    env_map_height: u32,
+    // explicit padding to match 16 byte alignment
+    _padding1: u32,
+      
 };
 
 
@@ -218,10 +221,9 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
         if hit_payload.hit_distance == F32_MAX {
             
             // we hit the sky
-            //let color = params.sky_color;
 
             let uv: vec2<f32> = environment_map_coords(ray.direction);
-            let texture_size = vec2<i32>(8192, 4096);
+            let texture_size = vec2<i32>(i32(params.env_map_width), i32(params.env_map_height));
 
             let color = sample_env_map(uv, texture_size);
 
