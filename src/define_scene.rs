@@ -11,6 +11,10 @@ use super::image_texture::ImageTexture;
 
 pub(crate) fn define_render_scene() -> RenderScene {
     // width and height for all images
+
+    let environment_map =
+        ImageTexture::new_environment_map("./env_maps/studio_garden.png", [8192, 4096]);
+
     let texture_size = [400, 400];
 
     let shiny_green_texture = ImageTexture::new_from_color([1.0, 0.0, 0.0], texture_size); // 0
@@ -586,5 +590,6 @@ pub(crate) fn define_render_scene() -> RenderScene {
         spheres: vec![sphere_a, sphere_b, shiny_sphere],
         objects: object_vec,
         sky_color: [0., 0.04, 0.1],
+        environment_map,
     }
 }

@@ -150,6 +150,7 @@ pub struct DataBuffers {
     pub object_buffer: Buffer,
     pub sub_object_buffer: Buffer,
     pub image_textures: Texture,
+    pub environment_map: Texture,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -256,6 +257,23 @@ impl DataBuffers {
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             });
 
+        let env_map_size = wgpu::Extent3d {
+            width: 8192,
+            height: 4096,
+            depth_or_array_layers: 1,
+        };
+
+        let environment_map = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Environment map"),
+            size: env_map_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
         let buffers = DataBuffers {
             output_buffer_size,
             accumulation_buffer_size,
@@ -270,6 +288,7 @@ impl DataBuffers {
             object_buffer,
             sub_object_buffer,
             image_textures,
+            environment_map,
         };
 
         let (bind_group_layout, compute_bind_group) = buffers.create_compute_bindgroup(device);
@@ -292,6 +311,7 @@ impl DataBuffers {
         let object_bind = 8;
         let texture_bind = 9;
         let sub_object_bind = 10;
+        let env_map_bind = 11;
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -405,6 +425,16 @@ impl DataBuffers {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: env_map_bind,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
             label: None,
         });
@@ -430,6 +460,14 @@ impl DataBuffers {
                     ),
                 },
                 bind_group_entry!(sub_object_bind, self.sub_object_buffer),
+                wgpu::BindGroupEntry {
+                    binding: env_map_bind,
+                    resource: wgpu::BindingResource::TextureView(
+                        &self
+                            .environment_map
+                            .create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
+                },
             ],
             label: None,
         });
@@ -469,6 +507,34 @@ impl DataBuffers {
                 },
             );
         }
+    }
+
+    pub fn update_environment_map_buffer(
+        &self,
+        env_map_texture: &ImageTexture,
+        queue: &Queue,
+        texture_width: u32,
+        texture_height: u32,
+    ) {
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &self.environment_map,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x: 0, y: 0, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            &env_map_texture.image_buffer,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * texture_width), // 4x u8 per pixel
+                rows_per_image: Some(texture_height),
+            },
+            wgpu::Extent3d {
+                width: texture_width,
+                height: texture_height,
+                depth_or_array_layers: 1,
+            },
+        );
     }
 
     pub fn update_ray_directions(&self, queue: &Queue, new_rays: &[Ray]) {

@@ -14,12 +14,21 @@ const PI: f32 = 3.1415926536;
 @group(0) @binding(8) var<uniform> object_array: array<ObjectInfo, 34>;
 @group(0) @binding(9) var texture_array: texture_2d_array<f32>;
 @group(0) @binding(10) var<storage, read> sub_object_array: array<SubObjectInfo, 802>;
+@group(0) @binding(11) var environment_map: texture_2d<f32>;
 
 
 fn sample_texture(index: u32, coords: vec2<f32>, texture_size: vec2<i32>) -> vec3<f32> {
     let texel_coords = vec2<i32>(coords * vec2<f32>(texture_size));
 
     let color = textureLoad(texture_array, texel_coords, i32(index), 0);
+
+    return color.rgb;
+}
+
+fn sample_env_map(coords: vec2<f32>, texture_size: vec2<i32>) -> vec3<f32> {
+    let texel_coords = vec2<i32>(coords * vec2<f32>(texture_size));
+
+    let color = textureLoad(environment_map, texel_coords, 0);
 
     return color.rgb;
 }
@@ -207,8 +216,16 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec3<f32> {
         let hit_payload: HitPayload = trace_ray(ray);
 
         if hit_payload.hit_distance == F32_MAX {
+            
             // we hit the sky
-            light += params.sky_color * light_contribution;
+            //let color = params.sky_color;
+
+            let uv: vec2<f32> = environment_map_coords(ray.direction);
+            let texture_size = vec2<i32>(8192, 4096);
+
+            let color = sample_env_map(uv, texture_size);
+
+            light += color * light_contribution;
             break;
         }
 
@@ -543,6 +560,13 @@ fn object_texture_coords(hitpoint: vec3<f32>, min_bounds: vec3<f32>, max_bounds:
 
     let u = normalized_hitpoint.x;
     let v = normalized_hitpoint.z;
+
+    return vec2<f32>(u, v);
+}
+
+fn environment_map_coords(ray_direction: vec3<f32>) -> vec2<f32>{
+    let u = 0.5 + atan2(ray_direction.z, ray_direction.x) / (2.0 * PI);
+    let v = 0.5 + asin(ray_direction.y) / PI;
 
     return vec2<f32>(u, v);
 }

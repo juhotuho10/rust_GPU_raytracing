@@ -22,6 +22,7 @@ pub struct RenderScene {
     pub materials: Vec<SceneMaterial>,
     pub objects: Vec<SceneObject>,
     pub sky_color: [f32; 3],
+    pub environment_map: ImageTexture,
 }
 
 pub struct Renderer<'a> {
@@ -75,6 +76,8 @@ impl Renderer<'_> {
             scene.texture_size[0],
             scene.texture_size[1],
         );
+
+        buffers.update_environment_map_buffer(&scene.environment_map, queue, 8192, 4096);
 
         let renderer = Renderer {
             camera,

@@ -20,7 +20,15 @@ impl ImageTexture {
         ImageTexture {
             from_color: false,
             color: None,
-            image_buffer: load_image(path, texture_size),
+            image_buffer: load_png_image(path, texture_size),
+        }
+    }
+
+    pub fn new_environment_map(path: &str, texture_size: [u32; 2]) -> ImageTexture {
+        ImageTexture {
+            from_color: false,
+            color: None,
+            image_buffer: load_png_image(path, texture_size),
         }
     }
 
@@ -57,7 +65,7 @@ pub fn solid_color_image(
     img
 }
 
-pub fn load_image(path: &str, texture_size: [u32; 2]) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+pub fn load_png_image(path: &str, texture_size: [u32; 2]) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
     let img = image::open(path).expect("could not load the image");
     let dim = img.dimensions();
     assert_eq!(
