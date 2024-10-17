@@ -2,7 +2,6 @@ use image::{GenericImageView, ImageBuffer, Rgba};
 
 #[derive(Debug, Clone)]
 pub struct ImageTexture {
-    pub from_color: bool,
     pub color: Option<[f32; 3]>,
     pub image_buffer: ImageBuffer<Rgba<u8>, Vec<u8>>,
 }
@@ -10,7 +9,6 @@ pub struct ImageTexture {
 impl ImageTexture {
     pub fn new_from_color(color: [f32; 3], texture_size: [u32; 2]) -> ImageTexture {
         ImageTexture {
-            from_color: true,
             color: Some(color),
             image_buffer: solid_color_image(color, texture_size),
         }
@@ -18,7 +16,6 @@ impl ImageTexture {
 
     pub fn new_from_image(path: &str, texture_size: [u32; 2]) -> ImageTexture {
         ImageTexture {
-            from_color: false,
             color: None,
             image_buffer: load_png_image(path, texture_size),
         }

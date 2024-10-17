@@ -1,8 +1,13 @@
 # Rust GPU raytracer
 
-Currently a ongoing project building a raytracer running on the GPU with Vulkan!
+A realtime 3D GPU computed raytracer made in Rust and WGSL shader language.
 
-The next goal is to add more meshes and hopefully add support for textures on the surfaces
+Sources used for learning and inspiration:
+Lots and lots of documentation!
+[Ray Tracing in One Weekend](https://raytracing.github.io/)
+[The Cherno series in raytracing](https://www.youtube.com/watch?v=gfW1Fhd9u9Q&list=PLlrATfBNZ98edc5GshdBtREv5asFW3yXl)
+[Sebastian Lague's Coding Adventure: Ray Tracing](https://www.youtube.com/watch?v=Qz0KTGYJtUk)
+
 
 ![Ray tracer example 11](./Rendered_images/Raytracing_example11.png)
 ![Ray tracer example 10](./Rendered_images/Raytracing_example10.png)

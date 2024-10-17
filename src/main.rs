@@ -165,8 +165,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         push_constant_ranges: &[],
     });
 
-    dbg!(texture.format());
-
     let render_pipeline = create_render_pipeline(&device, &pipeline_layout, texture.format());
 
     let mut surface_config = wgpu::SurfaceConfiguration {

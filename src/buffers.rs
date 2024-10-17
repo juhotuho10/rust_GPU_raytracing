@@ -91,7 +91,6 @@ impl SceneTriangle {
             _padding6: [0; 4],               // padding to ensure 16-byte alignment
             max_bounds: max_bounds.into(),   // vec3, aligned to 12 bytes
             _padding7: [0; 4],               // padding to ensure 16-byte alignment
-                                             // vec3, aligned to 12 bytes
         }
     }
 }
