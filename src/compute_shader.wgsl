@@ -265,7 +265,9 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
 
             let specular_percentage: f32 = specular_percentage(cos_theta, refraction_index);
 
-            if reflects || (current_material.specular * specular_percentage) > random(&seed){
+            let is_specular: bool = (current_material.specular * specular_percentage) > random(&seed);
+
+            if reflects || is_specular {
                 // specular reflection, bounces off the glass
                 
                 ray.direction = lerp(specular_direction, diffuse_direction, current_material.specular_scatter);
