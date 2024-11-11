@@ -9,11 +9,8 @@ Controls:
   - move up and down with E and Q
 - press F11 to hide and show the UI
 
-<<<<<<< HEAD
 All the objects in the world can be changed and manipulated from the UI
 
-=======
->>>>>>> d99119bb8f8f160638db5d7966b42b34c4463987
 Sources used for learning and inspiration:
 - Lots and lots of documentation!
 - [Ray Tracing in One Weekend](https://raytracing.github.io/)
