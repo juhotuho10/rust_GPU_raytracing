@@ -2,6 +2,13 @@
 
 A realtime 3D GPU computed raytracer made in Rust and WGSL shader language.
 
+Controls:
+- hold right click to enter movement mode where you can:
+  - In movement mode you can move camera with your mouse
+  - move in different direction with W A S D
+  - move up and down with E and Q
+- press F11 to hide and show the UI
+
 Sources used for learning and inspiration:
 - Lots and lots of documentation!
 - [Ray Tracing in One Weekend](https://raytracing.github.io/)
