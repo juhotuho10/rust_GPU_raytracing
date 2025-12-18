@@ -15,12 +15,12 @@ use define_scene::define_render_scene;
 
 use triangle_object::SceneObject;
 
-use egui::{pos2, Color32, DragValue, Frame, FullOutput};
+use egui::{Color32, DragValue, Frame, FullOutput, pos2};
 
 use wgpu::{
-    include_wgsl, Adapter, Backends, BindGroup, BlendState, Device, Dx12Compiler,
-    Gles3MinorVersion, Instance, InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
+    Adapter, Backends, BindGroup, BlendState, Device, Dx12Compiler, Gles3MinorVersion, Instance,
+    InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface, TextureDescriptor,
+    TextureDimension, TextureFormat, TextureUsages, include_wgsl,
 };
 
 use winit::{
