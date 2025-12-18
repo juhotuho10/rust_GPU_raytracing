@@ -1,5 +1,5 @@
 use crate::buffers::{ObjectInfo, SceneTriangle, SubObjectInfo};
-use glam::{vec3a, Mat3A, Vec3A};
+use glam::{Mat3A, Vec3A, vec3a};
 use std::fs::File;
 use std::io::BufReader;
 

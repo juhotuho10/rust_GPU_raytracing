@@ -3,17 +3,23 @@ const U32_MAX: u32 = 4294967295u;
 const PI: f32 = 3.1415926536;
 
 
+const TRIANGLE_COUNT: u32 = TRIANGLE_COUNT_PLACEHOLDER; 
+const SUB_OBJECT_COUNT: u32 = SUBOBJECT_COUNT_PLACEHOLDER;
+const OBJECT_COUNT: u32 = OBJECT_COUNT_PLACEHOLDER;
+const SPERE_COUNT: u32 = SPHERE_COUNT_PLACEHOLDER;
+const MATERIAL_COUNT: u32 = MATERIAL_COUNT_PLACEHOLDER;
+
 @group(0) @binding(0) var<storage, read> params: Params;
 @group(0) @binding(1) var<storage, read> camera_rays: array<vec3<f32>>;
 @group(0) @binding(2) var<storage, read_write> output_data: array<u32>;
 @group(0) @binding(3) var<uniform> ray_camera: RayCamera;
-@group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, 19>;
-@group(0) @binding(5) var<uniform> sphere_array: array<SceneSphere, 3>;
+@group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, MATERIAL_COUNT>;
+@group(0) @binding(5) var<uniform> sphere_array: array<SceneSphere, SPERE_COUNT>;
 @group(0) @binding(6) var<storage, read_write> accumulation_data: array<vec4<f32>>;
-@group(0) @binding(7) var<storage, read> triangle_array: array<SceneTriangle, 5552>;
-@group(0) @binding(8) var<uniform> object_array: array<ObjectInfo, 34>;
+@group(0) @binding(7) var<storage, read> triangle_array: array<SceneTriangle, TRIANGLE_COUNT>;
+@group(0) @binding(8) var<uniform> object_array: array<ObjectInfo, OBJECT_COUNT>;
 @group(0) @binding(9) var texture_array: texture_2d_array<f32>;
-@group(0) @binding(10) var<storage, read> sub_object_array: array<SubObjectInfo, 802>;
+@group(0) @binding(10) var<storage, read> sub_object_array: array<SubObjectInfo, SUB_OBJECT_COUNT>;
 @group(0) @binding(11) var environment_map: texture_2d<f32>;
 
 

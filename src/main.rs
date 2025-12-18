@@ -19,8 +19,8 @@ use egui::{Color32, DragValue, Frame, FullOutput, pos2};
 
 use wgpu::{
     Adapter, Backends, BindGroup, BlendState, Device, Dx12Compiler, Gles3MinorVersion, Instance,
-    InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages, include_wgsl,
+    InstanceDescriptor, InstanceFlags, PipelineCompilationOptions, PipelineLayout, Queue, Surface,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, include_wgsl,
 };
 
 use winit::{
@@ -34,7 +34,14 @@ use winit::{
 use egui_wgpu_backend::{RenderPass as EguiRenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 
-use std::time::Instant;
+use std::{collections::HashMap, time::Instant};
+
+const TRIANGLE_COUNT: u64 = 5552;
+const SUBOBJECT_COUNT: u64 = 802;
+const OBJECT_COUNT: u64 = 34;
+
+const SPHERE_COUNT: u64 = 3;
+const MATERIAL_COUNT: u64 = 19;
 
 pub fn main() {
     let event_loop = EventLoop::new().expect("failed to make eventloop");
@@ -112,6 +119,13 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     dbg!(scene.objects.len());
     dbg!(scene.materials.len());
 
+    assert_eq!(triangle_count, TRIANGLE_COUNT as u32);
+    assert_eq!(sub_object_count, SUBOBJECT_COUNT as u32);
+    assert_eq!(scene.objects.len(), OBJECT_COUNT as usize);
+
+    assert_eq!(scene.spheres.len(), SPHERE_COUNT as usize);
+    assert_eq!(scene.materials.len(), MATERIAL_COUNT as usize);
+
     // Create uniform buffer
     let params = Params {
         screen_width: size.width,
@@ -133,7 +147,18 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     // ################################ GPU COMPUTE PIPELINE #########################################
 
-    let compute_module = device.create_shader_module(include_wgsl!("compute_shader.wgsl"));
+    // compute shader compile time arguments
+    let compute_shader_code = include_str!("compute_shader.wgsl")
+        .replace("TRIANGLE_COUNT_PLACEHOLDER", &format!("{TRIANGLE_COUNT}"))
+        .replace("SUBOBJECT_COUNT_PLACEHOLDER", &format!("{SUBOBJECT_COUNT}"))
+        .replace("OBJECT_COUNT_PLACEHOLDER", &format!("{OBJECT_COUNT}"))
+        .replace("SPHERE_COUNT_PLACEHOLDER", &format!("{SPHERE_COUNT}"))
+        .replace("MATERIAL_COUNT_PLACEHOLDER", &format!("{MATERIAL_COUNT}"));
+
+    let compute_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("compute_shader.wgsl"),
+        source: wgpu::ShaderSource::Wgsl(compute_shader_code.into()),
+    });
 
     let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Compute Pipeline Layout"),

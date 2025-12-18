@@ -1,6 +1,6 @@
 use super::buffers::Ray;
 use egui::Context;
-use glam::{vec2, vec3a, vec4, Mat4, Quat, Vec3A, Vec4};
+use glam::{Mat4, Quat, Vec3A, Vec4, vec2, vec3a, vec4};
 use rayon::prelude::*;
 
 #[derive(Debug, Clone, PartialEq)]
