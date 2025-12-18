@@ -877,15 +877,14 @@ fn ui_material_selection(
 
         let color = &mut current_image.color;
 
-        if let Some(color) = color {
-            if ui
+        if let Some(color) = color
+            && ui
                 .color_edit_button_rgb(color)
                 .on_hover_text("color")
                 .changed()
-            {
-                *interacted = true;
-            };
-        }
+        {
+            *interacted = true;
+        };
 
         if create_drag_value!(ui, emission_power, 0.2, 0.0..=200.0, "emission power: ") {
             *interacted = true;

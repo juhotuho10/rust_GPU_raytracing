@@ -1,6 +1,6 @@
 use glam::Vec3A;
 
-use wgpu::{util::DeviceExt, BindGroup, BindGroupLayout, Buffer, Device, Queue, Texture};
+use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, Queue, Texture, util::DeviceExt};
 
 use super::image_texture::*;
 

@@ -243,7 +243,7 @@ impl Renderer<'_> {
                 });
             compute_pass.set_pipeline(compute_pipeline);
             compute_pass.set_bind_group(0, compute_bind_group, &[]);
-            compute_pass.dispatch_workgroups((width + 7) / 8, (height + 7) / 8, 1);
+            compute_pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
         }
 
         self.queue.submit(Some(compute_encoder.finish()));

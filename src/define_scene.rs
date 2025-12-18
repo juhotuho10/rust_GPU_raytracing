@@ -294,14 +294,14 @@ pub(crate) fn define_render_scene() -> RenderScene {
 
     let bishop_offset = vec3a(0.0, 0.0, 1.5 * tile);
 
-    let pawn1_offset = vec3a(-1.0 * tile, 0.0, 3.5 * tile);
-    let pawn2_offset = vec3a(-1.0 * tile, 0.0, 2.5 * tile);
-    let pawn3_offset = vec3a(-1.0 * tile, 0.0, 1.5 * tile);
-    let pawn4_offset = vec3a(-1.0 * tile, 0.0, 0.5 * tile);
-    let pawn5_offset = vec3a(-1.0 * tile, 0.0, -0.5 * tile);
-    let pawn6_offset = vec3a(-1.0 * tile, 0.0, -1.5 * tile);
-    let pawn7_offset = vec3a(-1.0 * tile, 0.0, -2.5 * tile);
-    let pawn8_offset = vec3a(-1.0 * tile, 0.0, -3.5 * tile);
+    let pawn1_offset = vec3a(-tile, 0.0, 3.5 * tile);
+    let pawn2_offset = vec3a(-tile, 0.0, 2.5 * tile);
+    let pawn3_offset = vec3a(-tile, 0.0, 1.5 * tile);
+    let pawn4_offset = vec3a(-tile, 0.0, 0.5 * tile);
+    let pawn5_offset = vec3a(-tile, 0.0, -0.5 * tile);
+    let pawn6_offset = vec3a(-tile, 0.0, -1.5 * tile);
+    let pawn7_offset = vec3a(-tile, 0.0, -2.5 * tile);
+    let pawn8_offset = vec3a(-tile, 0.0, -3.5 * tile);
 
     let object_vec = load_stl_files(&[
         // ################# floor ####################
