@@ -19,8 +19,8 @@ use egui::{Color32, DragValue, Frame, FullOutput, pos2};
 
 use wgpu::{
     Adapter, Backends, BindGroup, BlendState, Device, Dx12Compiler, Gles3MinorVersion, Instance,
-    InstanceDescriptor, InstanceFlags, PipelineCompilationOptions, PipelineLayout, Queue, Surface,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, include_wgsl,
+    InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface, TextureDescriptor,
+    TextureDimension, TextureFormat, TextureUsages, include_wgsl,
 };
 
 use winit::{
@@ -34,14 +34,14 @@ use winit::{
 use egui_wgpu_backend::{RenderPass as EguiRenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 
-use std::{collections::HashMap, time::Instant};
+use std::time::Instant;
 
-const TRIANGLE_COUNT: u64 = 5552;
-const SUBOBJECT_COUNT: u64 = 802;
-const OBJECT_COUNT: u64 = 34;
+pub const TRIANGLE_COUNT: u64 = 5552;
+pub const SUBOBJECT_COUNT: u64 = 802;
+pub const OBJECT_COUNT: u64 = 34;
 
-const SPHERE_COUNT: u64 = 3;
-const MATERIAL_COUNT: u64 = 19;
+pub const SPHERE_COUNT: u64 = 3;
+pub const MATERIAL_COUNT: u64 = 19;
 
 pub fn main() {
     let event_loop = EventLoop::new().expect("failed to make eventloop");
@@ -115,8 +115,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     println!("the following numbers should be the same in the compute shader for the buffer sizes");
     dbg!(triangle_count);
     dbg!(sub_object_count);
-    dbg!(scene.spheres.len());
     dbg!(scene.objects.len());
+
+    dbg!(scene.spheres.len());
     dbg!(scene.materials.len());
 
     assert_eq!(triangle_count, TRIANGLE_COUNT as u32);
