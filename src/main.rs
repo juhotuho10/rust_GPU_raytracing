@@ -150,11 +150,11 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
     // compute shader compile time arguments
     let compute_shader_code = include_str!("compute_shader.wgsl")
-        .replace("TRIANGLE_COUNT_PLACEHOLDER", &format!("{TRIANGLE_COUNT}"))
-        .replace("SUBOBJECT_COUNT_PLACEHOLDER", &format!("{SUBOBJECT_COUNT}"))
-        .replace("OBJECT_COUNT_PLACEHOLDER", &format!("{OBJECT_COUNT}"))
-        .replace("SPHERE_COUNT_PLACEHOLDER", &format!("{SPHERE_COUNT}"))
-        .replace("MATERIAL_COUNT_PLACEHOLDER", &format!("{MATERIAL_COUNT}"));
+        .replace("TRIANGLE_COUNT_PLACEHOLDER", &TRIANGLE_COUNT.to_string())
+        .replace("SUBOBJECT_COUNT_PLACEHOLDER", &SUBOBJECT_COUNT.to_string())
+        .replace("OBJECT_COUNT_PLACEHOLDER", &OBJECT_COUNT.to_string())
+        .replace("SPHERE_COUNT_PLACEHOLDER", &SPHERE_COUNT.to_string())
+        .replace("MATERIAL_COUNT_PLACEHOLDER", &MATERIAL_COUNT.to_string());
 
     let compute_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("compute_shader.wgsl"),
