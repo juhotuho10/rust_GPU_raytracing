@@ -18,8 +18,7 @@ All the objects in the world can be changed and manipulated from the UI
 - [Sebastian Lague's Coding Adventure: Ray Tracing](https://www.youtube.com/watch?v=Qz0KTGYJtUk)
 
 
-
-![Demo](https://i.imgur.com/nBnoJxl.gif)
+<img src="https://i.imgur.com/nBnoJxl.gif"/>
 
 ![Ray tracer example 11](./Rendered_images/Raytracing_example11.png)
 ![Ray tracer example 10](./Rendered_images/Raytracing_example10.png)
