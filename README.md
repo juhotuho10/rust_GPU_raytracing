@@ -18,6 +18,8 @@ All the objects in the world can be changed and manipulated from the UI
 - [Sebastian Lague's Coding Adventure: Ray Tracing](https://www.youtube.com/watch?v=Qz0KTGYJtUk)
 
 
+If you have Rust installed, you can run `cargo run --release` to compile and run the program. You might need a dedicated GPU to run the program
+
 ![Ray tracer example 11](./Rendered_images/Raytracing_example11.png)
 ![Ray tracer example 10](./Rendered_images/Raytracing_example10.png)
 ![Ray tracer example 9](./Rendered_images/Raytracing_example9.png)
