@@ -203,6 +203,20 @@ fn pack_to_u32(vector: vec4<f32>) -> u32 {
     return (byte0 << 0) | (byte1 << 8) | (byte2 << 16) | (byte3 << 24);
 }
 
+fn random_unit_vector(seed: ptr<function, u32>) -> vec3<f32> {
+    // uniform direction on the unit sphere (no NaN, no clumping)
+    let z: f32 = random(seed) * 2.0 - 1.0;
+    let a: f32 = random(seed) * 2.0 * PI;
+    let r: f32 = sqrt(1.0 - z * z);
+    return vec3<f32>(r * cos(a), r * sin(a), z);
+}
+
+fn random_in_unit_sphere(seed: ptr<function, u32>) -> vec3<f32> {
+    // uniform in the sphere's volume
+    return random_unit_vector(seed) * pow(random(seed), 1.0 / 3.0);
+}
+
+
 fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
 
     var ray = Ray( 
@@ -210,7 +224,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
         camera_rays[index]
     );
 
-    var seed: u32 = index * random_index * 326624u;
+    var seed: u32 = pcg_hash(pcg_hash(index ^ (random_index * 0x9E3779B9u)));
 
     ray.direction += random_scaler(&seed) * 0.0005;
     
@@ -239,7 +253,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
         let material_index: u32 = hit_payload.material_index;
         let current_material: SceneMaterial = material_array[material_index];
 
-        let diffuse_direction: vec3<f32> = normalize(hit_payload.hitside_normal + random_normal_scaler(&seed));
+        let diffuse_direction: vec3<f32> = normalize(hit_payload.hitside_normal + random_in_unit_sphere(&seed));
         let specular_direction: vec3<f32> = reflect(ray.direction, hit_payload.hitside_normal);
    
         let texture_size = vec2<i32>(i32(params.texture_width), i32(params.texture_height));
@@ -580,30 +594,19 @@ fn environment_map_coords(ray_direction: vec3<f32>) -> vec2<f32>{
     return vec2<f32>(u, v);
 }
 
-fn random(seed: ptr<function, u32>) -> f32 {
-
-    // random float between 0 and 1 using pcg hash
-    var state: u32 = *seed * 747796405u + 2891336453u;
-
+fn pcg_hash(value: u32) -> u32 {
+    let state: u32 = value * 747796405u + 2891336453u;
     var word: u32 = (state >> ((state >> 28u) + 4u)) ^ state;
     word = word * 277803737u;
+    return (word >> 22u) ^ word;
+}
 
-    // change seed value in place
-    *seed = (word >> 22u) ^ word;
-
+fn random(seed: ptr<function, u32>) -> f32 {
+    // random float between 0 and 1 using pcg hash
+    *seed = pcg_hash(*seed);
     return normalize_u32(*seed);
 }
 
-
-fn random_normal_scaler(seed: ptr<function, u32>) -> vec3<f32>{
-    // normally distributed random vec3 scaler from -1 to 1
-    var scaler = vec3<f32>(0.0);
-    scaler.x = normal_distribution(seed);
-    scaler.y = normal_distribution(seed);
-    scaler.z = normal_distribution(seed);
-
-    return scaler;
-}
 
 fn random_scaler(seed: ptr<function, u32>) -> vec3<f32>{
     // random vec3 scaler from -1 to 1
@@ -615,13 +618,6 @@ fn random_scaler(seed: ptr<function, u32>) -> vec3<f32>{
     return scaler * 2.0 - 1.0;
 }
 
-fn normal_distribution(seed: ptr<function, u32>) -> f32{
-    // returns normally distributed float
-    let theta: f32 = 2.0 * 3.1415926 * random(seed);
-    let rho: f32 = sqrt(-2.0 * log(random(seed)));
-    return rho * cos(theta);
-
-}
 
 fn normalize_u32(value: u32) -> f32{
     return f32(value) / f32(U32_MAX);
