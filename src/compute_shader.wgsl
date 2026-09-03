@@ -135,6 +135,7 @@ struct HitPayload {
 struct Ray {
     origin: vec3<f32>,
     direction: vec3<f32>,
+    inv_direction: vec3<f32>,
 }
 
 
@@ -221,7 +222,8 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
 
     var ray = Ray( 
         ray_camera.origin,
-        camera_rays[index]
+        camera_rays[index],
+        1 / ray_camera.origin
     );
 
     var seed: u32 = pcg_hash(pcg_hash(index ^ (random_index * 0x9E3779B9u)));
@@ -231,9 +233,11 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
     var light_contribution = vec4<f32>(1.0);
     var light = vec4<f32>(0.0);
 
-    
+    let env_size = vec2<i32>(i32(params.env_map_width), i32(params.env_map_height));
+    let texture_size = vec2<i32>(i32(params.texture_width), i32(params.texture_height));
 
     for (var i: u32 = 0u; i < bounces; i = i + 1) {
+        ray.inv_direction = 1.0 / ray.direction; 
 
         let hit_payload: HitPayload = trace_ray(ray);
 
@@ -242,9 +246,9 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
             // we hit the sky
 
             let uv: vec2<f32> = environment_map_coords(ray.direction);
-            let texture_size = vec2<i32>(i32(params.env_map_width), i32(params.env_map_height));
+            
 
-            let color: vec4<f32>  = sample_env_map(uv, texture_size);
+            let color: vec4<f32>  = sample_env_map(uv, env_size);
 
             light += color * light_contribution;
             break;
@@ -256,8 +260,6 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
         let diffuse_direction: vec3<f32> = normalize(hit_payload.hitside_normal + random_in_unit_sphere(&seed));
         let specular_direction: vec3<f32> = reflect(ray.direction, hit_payload.hitside_normal);
    
-        let texture_size = vec2<i32>(i32(params.texture_width), i32(params.texture_height));
-
         let current_color: vec4<f32> = sample_texture(current_material.texture_index, hit_payload.texture_point, texture_size);
 
         let emitted_light = current_color * current_material.emission_power;
@@ -319,6 +321,10 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
 
         }
 
+        if (light_contribution.r < 0.005 && light_contribution.g < 0.005 && light_contribution.b < 0.005) {
+            break;
+        }
+
     }
     return light;
 }
@@ -328,7 +334,7 @@ fn refract(ray_direction:vec3<f32>, hitside_normal: vec3<f32>, cos_theta: f32, r
 
     let ray_perpendicular: vec3<f32> =  refraction_index * (ray_direction + cos_theta * hitside_normal);
 
-    let len_squared = length(ray_perpendicular) * length(ray_perpendicular);
+    let len_squared: f32 = dot(ray_perpendicular, ray_perpendicular);
     let ray_parallel: vec3<f32> = -sqrt(abs(1.0 - len_squared)) * hitside_normal;
 
     return ray_perpendicular + ray_parallel;
@@ -377,7 +383,8 @@ fn check_spheres(ray: Ray) -> HitPayload{
     let a: f32 = dot(ray.direction, ray.direction);
 
     // 4 used a a TEMPORARY sphere count, count should be passed in the params buffer
-    for (var sphere_index: i32 = 0; sphere_index < i32(params.sphere_count); sphere_index = sphere_index + 1) {
+    let sphere_count: i32 = i32(params.sphere_count);
+    for (var sphere_index: i32 = 0; sphere_index < sphere_count; sphere_index = sphere_index + 1) {
         let sphere: SceneSphere = sphere_array[sphere_index];
         let origin: vec3<f32> = ray.origin - sphere.position;
 
@@ -397,7 +404,6 @@ fn check_spheres(ray: Ray) -> HitPayload{
         //let t0 = (-b + sqrt(discriminant)) / (2. * a);
 
         let current_t: f32 = (-b - sqrt(discriminant)) / (2. * a);
-
         if (current_t > 0.0) && (current_t < closest_distance) {
             closest_distance = current_t;
             closest_sphere_index = sphere_index;
@@ -418,9 +424,8 @@ fn ray_in_bounds(ray: Ray, min_bounds: vec3<f32>, max_bounds: vec3<f32>) -> bool
 
     // quick check to see if the ray falls within the object bounds
 
-    let inv_direction: vec3<f32> = 1 / ray.direction;
-    let min_t: vec3<f32> = (min_bounds - ray.origin) * inv_direction;
-    let max_t: vec3<f32> = (max_bounds - ray.origin) * inv_direction;
+    let min_t: vec3<f32> = (min_bounds - ray.origin) * ray.inv_direction;
+    let max_t: vec3<f32> = (max_bounds - ray.origin) * ray.inv_direction;
     let t1: vec3<f32> = min(min_t, max_t);
     let t2: vec3<f32> = max(min_t, max_t);
     let near_t: f32 = max(max(t1.x, t1.y), t1.z);
@@ -432,7 +437,10 @@ fn ray_in_bounds(ray: Ray, min_bounds: vec3<f32>, max_bounds: vec3<f32>) -> bool
 fn check_triangles(ray: Ray) -> HitPayload{
 
     var closest_distance = F32_MAX;
-    var closest_hitpayload: HitPayload = miss();
+    var closest_object_index: u32 = 0u;
+    var closest_triangle_index: u32 = 0u;
+    var closest_front_face: bool = false;
+    var found_hit: bool = false;
 
     for (var object_index: u32 = 0; object_index < params.object_count; object_index = object_index + 1) {
         let object_info: ObjectInfo = object_array[object_index];
@@ -490,39 +498,39 @@ fn check_triangles(ray: Ray) -> HitPayload{
                     continue;
                 }
 
-                var front_face: bool;
-
-                var hitside_normal: vec3<f32>;
-
-                if determinant > 0.0 {
-                    front_face = true;
-                    hitside_normal = tri.face_normal;
-                }else{
-                    front_face = false;
-                    hitside_normal = -tri.face_normal;
-                }
-
                 closest_distance = distance;
-
-                let hitpoint = ray.origin + ray.direction * distance;
-
-                let texture_coords = object_texture_coords(hitpoint, object_info.min_bounds, object_info.max_bounds);
-
-
-                closest_hitpayload = HitPayload(
-                    distance,
-                    hitpoint,
-                    hitside_normal,
-                    object_info.material_index,
-                    front_face,
-                    texture_coords,
-                );
+                closest_object_index = object_index;
+                closest_triangle_index = triangle_index;
+                closest_front_face = determinant > 0.0;
+                found_hit = true;
     
             };
         }
     };
 
-    return closest_hitpayload;
+    if !found_hit {
+        return miss();
+    }
+
+    let tri: SceneTriangle = triangle_array[closest_triangle_index];
+    let object_info: ObjectInfo = object_array[closest_object_index];
+
+    let hitpoint = ray.origin + ray.direction * closest_distance;
+    let texture_coords = object_texture_coords(hitpoint, object_info.min_bounds, object_info.max_bounds);
+
+    var hitside_normal: vec3<f32> = tri.face_normal;
+    if !closest_front_face {
+        hitside_normal = -tri.face_normal;
+    }
+
+    return HitPayload(
+        closest_distance,
+        hitpoint,
+        hitside_normal,
+        object_info.material_index,
+        closest_front_face,
+        texture_coords,
+    );
 
 }
 
