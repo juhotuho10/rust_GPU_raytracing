@@ -167,11 +167,7 @@ impl SceneObject {
         let mut triangle_counter = 0;
 
         for subvec in self.object_triangles.chunks(self.n_sub_object_triangels) {
-            let all_bounds: Vec<Vec3A> = subvec
-                .iter()
-                .flat_map(|x| vec![x.min_bounds.into(), x.max_bounds.into()])
-                .collect();
-
+            let all_bounds = triangle_bounds(subvec);
             let (min_bounds, max_bounds) = get_bounding_box(&all_bounds);
 
             let new_sub_object = SubObjectInfo {
@@ -202,10 +198,7 @@ impl SceneObject {
             .chunks(self.n_sub_object_triangels)
             .enumerate()
         {
-            let all_bounds: Vec<Vec3A> = subvec
-                .iter()
-                .flat_map(|x| vec![x.min_bounds.into(), x.max_bounds.into()])
-                .collect();
+            let all_bounds: Vec<Vec3A> = triangle_bounds(subvec);
 
             let (min_bounds, max_bounds) = get_bounding_box(&all_bounds);
 
@@ -215,6 +208,22 @@ impl SceneObject {
             current_sub_obj.max_bounds = max_bounds.into();
         }
     }
+}
+
+fn triangle_bounds(triangles: &[SceneTriangle]) -> Vec<Vec3A> {
+    triangles
+        .iter()
+        .flat_map(|x| {
+            let a = Vec3A::from_array(x.a);
+            let b = Vec3A::from_array(x.edge_ab) + a;
+            let c = Vec3A::from_array(x.edge_ac) + a;
+
+            let min_bounds = a.min(b).min(c);
+            let max_bounds = a.max(b).max(c);
+
+            vec![min_bounds, max_bounds]
+        })
+        .collect()
 }
 
 fn generate_triangles(

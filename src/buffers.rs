@@ -47,20 +47,16 @@ pub struct SceneSphere {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SceneTriangle {
-    a: [f32; 3],              //
-    _padding: [u8; 4],        // padding to ensure 16-byte alignment
-    edge_ab: [f32; 3],        // vec3, aligned to 12 bytes
-    _padding2: [u8; 4],       // padding to ensure 16-byte alignment
-    edge_ac: [f32; 3],        // vec3, aligned to 12 bytes
-    _padding3: [u8; 4],       // padding to ensure 16-byte alignment
-    calc_normal: [f32; 3],    // vec3, aligned to 12 bytes
-    _padding4: [u8; 4],       // padding to ensure 16-byte alignment
-    face_normal: [f32; 3],    // vec3, aligned to 12 bytes
-    _padding5: [u8; 4],       // padding to ensure 16-byte alignment
-    pub min_bounds: [f32; 3], // vec3, aligned to 12 bytes
-    _padding6: [u8; 4],       // padding to ensure 16-byte alignment
-    pub max_bounds: [f32; 3], // vec3, aligned to 12 bytes
-    _padding7: [u8; 4],       // padding to ensure 16-byte alignment
+    pub a: [f32; 3],       //
+    _padding: [u8; 4],     // padding to ensure 16-byte alignment
+    pub edge_ab: [f32; 3], // vec3, aligned to 12 bytes
+    _padding2: [u8; 4],    // padding to ensure 16-byte alignment
+    pub edge_ac: [f32; 3], // vec3, aligned to 12 bytes
+    _padding3: [u8; 4],    // padding to ensure 16-byte alignment
+    calc_normal: [f32; 3], // vec3, aligned to 12 bytes
+    _padding4: [u8; 4],    // padding to ensure 16-byte alignment
+    face_normal: [f32; 3], // vec3, aligned to 12 bytes
+    _padding5: [u8; 4],    // padding to ensure 16-byte alignment
 }
 
 impl SceneTriangle {
@@ -73,9 +69,6 @@ impl SceneTriangle {
         let calc_normal = edge_ab.cross(edge_ac);
         let face_normal = calc_normal.normalize();
 
-        let min_bounds = a.min(b).min(c);
-        let max_bounds = a.max(b).max(c);
-
         SceneTriangle {
             a: a.into(),                     // vec3, aligned to 12 bytes
             _padding: [0; 4],                // padding to ensure 16-byte alignment
@@ -87,10 +80,6 @@ impl SceneTriangle {
             _padding4: [0; 4],               // padding to ensure 16-byte alignment
             face_normal: face_normal.into(), // vec3, aligned to 12 bytes
             _padding5: [0; 4],               // padding to ensure 16-byte alignment
-            min_bounds: min_bounds.into(),   // vec3, aligned to 12 bytes
-            _padding6: [0; 4],               // padding to ensure 16-byte alignment
-            max_bounds: max_bounds.into(),   // vec3, aligned to 12 bytes
-            _padding7: [0; 4],               // padding to ensure 16-byte alignment
         }
     }
 }
