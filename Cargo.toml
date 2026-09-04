@@ -7,16 +7,16 @@ version = "0.1.0"
 
 [dependencies]
 bytemuck = "1.25.2"
-egui = "0.29"
-egui_wgpu_backend = "0.32"
-egui_winit_platform = "0.24"
+egui = "0.31"
+egui_wgpu_backend = "0.34"
+egui_winit_platform = "0.26"
 env_logger = "0.11.11"
 glam = "0.33.6"
 image = "0.25.10"
 pollster = "1.0.1"
 rayon = "1.12.0"
 stl_io = "0.11.0"
-wgpu = "23.0.1"
+wgpu = "24.0.5"
 winit = "0.30"
 
 

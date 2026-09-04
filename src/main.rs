@@ -374,7 +374,7 @@ impl App {
 
 impl Gpu {
     fn new(target: &ActiveEventLoop) -> Self {
-        let instance = wgpu::Instance::new(InstanceDescriptor {
+        let instance = wgpu::Instance::new(&InstanceDescriptor {
             backends: Backends::VULKAN,
             ..Default::default()
         });
@@ -752,7 +752,7 @@ fn create_ui(
     screne_renderer: &mut Renderer,
     compute_per_second: &u32,
 ) -> FullOutput {
-    platform.begin_frame();
+    platform.begin_pass();
 
     // important, create a egui context, do not use platform.conmtext()
     let egui_context = platform.context();
@@ -761,7 +761,7 @@ fn create_ui(
     style.visuals.override_text_color = Some(Color32::from_rgb(200, 200, 200));
     egui_context.set_style(style);
 
-    let transparent_frame = Frame::none().fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200));
+    let transparent_frame = Frame::new().fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200));
 
     let mut interacted = false;
 

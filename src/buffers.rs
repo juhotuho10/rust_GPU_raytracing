@@ -479,7 +479,7 @@ impl DataBuffers {
     ) {
         for (i, texture) in textures.iter().enumerate() {
             queue.write_texture(
-                wgpu::ImageCopyTexture {
+                wgpu::TexelCopyTextureInfo {
                     texture: &self.image_textures,
                     mip_level: 0,
                     origin: wgpu::Origin3d {
@@ -490,7 +490,7 @@ impl DataBuffers {
                     aspect: wgpu::TextureAspect::All,
                 },
                 &texture.image_buffer,
-                wgpu::ImageDataLayout {
+                wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(4 * texture_width), // 4x u8 per pixel
                     rows_per_image: Some(texture_height),
@@ -512,14 +512,14 @@ impl DataBuffers {
         texture_height: u32,
     ) {
         queue.write_texture(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 texture: &self.environment_map,
                 mip_level: 0,
                 origin: wgpu::Origin3d { x: 0, y: 0, z: 0 },
                 aspect: wgpu::TextureAspect::All,
             },
             &env_map_texture.image_buffer,
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(4 * texture_width), // 4x u8 per pixel
                 rows_per_image: Some(texture_height),
@@ -617,12 +617,17 @@ impl DataBuffers {
             .create_view(&wgpu::TextureViewDescriptor {
                 label: Some("Output Texture sRGB View"),
                 format: Some(wgpu::TextureFormat::Rgba8UnormSrgb),
+
+                usage: Some(wgpu::TextureUsages::TEXTURE_BINDING),
                 ..Default::default()
             })
     }
 
     pub fn output_texture_storage_view(&self) -> wgpu::TextureView {
         self.output_texture
-            .create_view(&wgpu::TextureViewDescriptor::default())
+            .create_view(&wgpu::TextureViewDescriptor {
+                usage: Some(wgpu::TextureUsages::STORAGE_BINDING),
+                ..Default::default()
+            })
     }
 }
