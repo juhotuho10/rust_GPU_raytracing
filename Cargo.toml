@@ -6,17 +6,17 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bytemuck = "1.25.2"
+bytemuck = { version = "1.25.2", default-features = false, features = [] }
 egui = "0.36"
 egui-wgpu = "0.36"
 egui-winit = "0.36"
 env_logger = "0.11.11"
-glam = "0.33.6"
-image = "0.25.10"
-pollster = "1.0.1"
-rayon = "1.12.0"
-stl_io = "0.11.0"
-wgpu = "30"
+glam = { version = "0.33.6", default-features = false, features = ["std"] }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+pollster = { version = "1.0.1", default-features = false }
+rayon = { version = "1.12.0", default-features = false }
+stl_io = { version = "0.11.0", default-features = false }
+wgpu = { version = "30", default-features = false, features = ["std", "wgsl",  "vulkan"] }
 winit = "0.30"
 
 
