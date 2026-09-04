@@ -8,8 +8,7 @@ use egui::Context;
 
 use wgpu::{BindGroup, BindGroupLayout, Device, Queue};
 
-pub use crate::scene::RenderScene;
-
+use buffers::RenderScene;
 pub struct Renderer {
     pub camera: Camera,
     pub scene: RenderScene,

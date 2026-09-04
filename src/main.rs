@@ -1,9 +1,9 @@
 #[allow(dead_code, unused)]
 mod buffers;
 mod camera;
+mod define_scene;
 mod image_texture;
 mod renderer;
-mod scene;
 mod triangle_object;
 
 use buffers::Params;
@@ -11,10 +11,7 @@ use camera::Camera;
 
 use renderer::Renderer;
 
-mod define_scene;
-
 use define_scene::define_render_scene;
-
 use triangle_object::SceneObject;
 
 use egui::{Color32, DragValue, Frame};
@@ -36,25 +33,6 @@ use egui_wgpu::ScreenDescriptor;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-
-// Scene counts exported by build.rs, which runs the real define_render_scene().
-const fn env_count(value: &str) -> u64 {
-    let bytes = value.as_bytes();
-    let mut n = 0;
-    let mut i = 0;
-    while i < bytes.len() {
-        n = n * 10 + (bytes[i] - b'0') as u64;
-        i += 1;
-    }
-    n
-}
-
-pub const TRIANGLE_COUNT: u64 = env_count(env!("TRIANGLE_COUNT"));
-pub const SUBOBJECT_COUNT: u64 = env_count(env!("SUBOBJECT_COUNT"));
-pub const OBJECT_COUNT: u64 = env_count(env!("OBJECT_COUNT"));
-
-pub const SPHERE_COUNT: u64 = env_count(env!("SPHERE_COUNT"));
-pub const MATERIAL_COUNT: u64 = env_count(env!("MATERIAL_COUNT"));
 
 const SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
@@ -418,7 +396,7 @@ impl Gpu {
         let size = window.inner_size();
         let camera = Camera::new(size.width, size.height);
 
-        let scene: renderer::RenderScene = define_render_scene();
+        let scene = define_render_scene();
         // ################################################################################
 
         let triangle_count: usize = scene
@@ -440,12 +418,6 @@ impl Gpu {
         dbg!(scene.objects.len());
         dbg!(scene.spheres.len());
         dbg!(scene.materials.len());
-
-        assert_eq!(triangle_count, TRIANGLE_COUNT as usize);
-        assert_eq!(sub_object_count, SUBOBJECT_COUNT as usize);
-        assert_eq!(scene.objects.len(), OBJECT_COUNT as usize);
-        assert_eq!(scene.spheres.len(), SPHERE_COUNT as usize);
-        assert_eq!(scene.materials.len(), MATERIAL_COUNT as usize);
 
         // ################################################################################
 
@@ -469,22 +441,11 @@ impl Gpu {
 
         // ################################ GPU COMPUTE PIPELINE #########################################
 
-        let mut compute_shader_code = include_str!("compute_shader.wgsl").to_string();
-        for (placeholder, count) in [
-            ("TRIANGLE_COUNT_PLACEHOLDER", TRIANGLE_COUNT),
-            ("SUBOBJECT_COUNT_PLACEHOLDER", SUBOBJECT_COUNT),
-            ("OBJECT_COUNT_PLACEHOLDER", OBJECT_COUNT),
-            ("SPHERE_COUNT_PLACEHOLDER", SPHERE_COUNT),
-            ("MATERIAL_COUNT_PLACEHOLDER", MATERIAL_COUNT),
-        ] {
-            compute_shader_code = compute_shader_code.replace(placeholder, &count.to_string());
-        }
-
         let compute_module = renderer
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("compute_shader.wgsl"),
-                source: wgpu::ShaderSource::Wgsl(compute_shader_code.into()),
+                source: wgpu::ShaderSource::Wgsl(include_str!("compute_shader.wgsl").into()),
             });
 
         let compute_pipeline_layout =
@@ -712,7 +673,7 @@ async fn create_adapter(instance: &wgpu::Instance, surface: &Surface<'_>) -> wgp
 
 async fn generate_device_and_queue(adapter: &Adapter) -> (Device, Queue) {
     let adapter_limits = wgpu::Limits {
-        max_storage_buffers_per_shader_stage: 6,
+        max_storage_buffers_per_shader_stage: 8,
         ..wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits())
     };
 

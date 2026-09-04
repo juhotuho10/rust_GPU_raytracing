@@ -1,4 +1,4 @@
-use crate::scene::{ObjectInfo, SceneTriangle, SubObjectInfo};
+use crate::buffers::{ObjectInfo, SceneTriangle, SubObjectInfo};
 use glam::{Mat3A, Vec3A, vec3a};
 use std::fs::File;
 use std::io::BufReader;
