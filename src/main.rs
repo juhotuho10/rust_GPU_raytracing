@@ -215,7 +215,7 @@ impl App {
                 // Exit the application
                 gpu.renderer
                     .device
-                    .poll(wgpu::PollType::Wait)
+                    .poll(wgpu::PollType::wait_indefinitely())
                     .expect("device poll failed");
                 target.exit();
             }
@@ -478,7 +478,7 @@ impl Gpu {
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Compute Pipeline Layout"),
                     bind_group_layouts: &[&compute_bindgroup_layout],
-                    push_constant_ranges: &[],
+                    immediate_size: 0,
                 });
 
         let compute_pipeline =
@@ -507,7 +507,7 @@ impl Gpu {
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: None,
                     bind_group_layouts: &[&bind_group_layout],
-                    push_constant_ranges: &[],
+                    immediate_size: 0,
                 });
 
         let render_pipeline =
@@ -636,6 +636,7 @@ fn setup_renderpass(
 ) {
     let mut rpass: wgpu::RenderPass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: None,
+        multiview_mask: None,
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
             view,
             resolve_target: None,
@@ -685,7 +686,7 @@ fn create_render_pipeline(
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -717,6 +718,7 @@ async fn generate_device_and_queue(adapter: &Adapter) -> (Device, Queue) {
             required_limits: adapter_limits,
             memory_hints: wgpu::MemoryHints::default(),
             trace: wgpu::Trace::Off,
+            experimental_features: wgpu::ExperimentalFeatures::disabled(),
         })
         .await
         .expect("Failed to create device")
@@ -729,7 +731,7 @@ fn generate_sampler(device: &wgpu::Device) -> wgpu::Sampler {
         address_mode_w: wgpu::AddressMode::ClampToEdge,
         mag_filter: wgpu::FilterMode::Linear,
         min_filter: wgpu::FilterMode::Linear,
-        mipmap_filter: wgpu::FilterMode::Nearest,
+        mipmap_filter: wgpu::MipmapFilterMode::Nearest,
         ..Default::default()
     })
 }
