@@ -1,6 +1,10 @@
 use super::buffers::Ray;
 use egui::Context;
-use glam::{Mat4, Quat, Vec3A, Vec4, vec2, vec3a, vec4};
+use glam::{
+    Mat4, Quat, Vec3A, Vec4,
+    camera::rh::{proj, view},
+    vec2, vec3a, vec4,
+};
 use rayon::prelude::*;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -122,13 +126,13 @@ impl Camera {
         let fov_rad: f32 = self.vertical_fov.to_radians();
         let aspect_ratio = (self.viewport_width / self.viewport_height) as f32;
         self.projection =
-            Mat4::perspective_rh_gl(fov_rad, aspect_ratio, self.near_clip, self.far_clip);
+            proj::opengl::perspective(fov_rad, aspect_ratio, self.near_clip, self.far_clip);
 
         self.inverse_projection = self.projection.inverse();
     }
 
     pub fn recalculate_view(&mut self) {
-        self.view = Mat4::look_at_rh(
+        self.view = view::look_at_mat4(
             self.position.into(),
             (self.position + self.direction).into(),
             glam::Vec3::Y,
