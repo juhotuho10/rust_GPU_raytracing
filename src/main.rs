@@ -15,11 +15,11 @@ use define_scene::define_render_scene;
 
 use triangle_object::SceneObject;
 
-use egui::{Color32, DragValue, Frame, FullOutput};
+use egui::{Color32, DragValue, Frame};
 
 use wgpu::{
-    Adapter, Backends, BindGroup, BlendState, Device, InstanceDescriptor, PipelineLayout, Queue,
-    Surface, TextureFormat, TextureUsages, include_wgsl,
+    Adapter, BindGroup, BlendState, Device, InstanceDescriptor, PipelineLayout, Queue, Surface,
+    TextureFormat, TextureUsages, include_wgsl,
 };
 
 use winit::{
@@ -30,8 +30,7 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 
-use egui_wgpu_backend::{RenderPass as EguiRenderPass, ScreenDescriptor};
-use egui_winit_platform::{Platform, PlatformDescriptor};
+use egui_wgpu::ScreenDescriptor;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -58,10 +57,7 @@ pub fn main() {
 
     let mut app = App::new();
 
-    event_loop.run_app(&mut app).expect("Eventloop failed");
-
-    // App fields drop in declaration order: gpu drops with the renderer, which owns
-    // the device and queue, so GPU resources are released safely.
+    event_loop.run_app(&mut app).expect("Eventloop failed")
 }
 
 struct App {
@@ -77,8 +73,6 @@ struct App {
     compute_timer: Timer,
     compute_per_second_timer: Timer,
 }
-
-// Everything that requires an existing window. Created once in `resumed`.
 struct Gpu {
     window: Arc<Window>,
     surface: Surface<'static>,
@@ -94,9 +88,9 @@ struct Gpu {
 }
 
 struct EguiState {
-    platform: Platform,
+    winit: egui_winit::State,
+    renderer: egui_wgpu::Renderer,
     screen_descriptor: ScreenDescriptor,
-    rpass: EguiRenderPass,
 }
 
 // ##########################################################################################################################
@@ -165,13 +159,12 @@ impl ApplicationHandler for App {
         event: WindowEvent,
     ) {
         if let Some(gpu) = self.gpu.as_mut() {
-            gpu.egui.platform.handle_event(&event);
+            // The repaint flag is ignored because a redraw is requested after every event batch.
+            let _ = gpu.egui.winit.on_window_event(&gpu.window, &event);
         }
         self.handle_window_event(event, event_loop);
     }
 
-    // `about_to_wait` fires after every event batch, so redraws are requested here
-    // instead of in each individual event arm.
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if let Some(gpu) = self.gpu.as_ref() {
             gpu.window.request_redraw();
@@ -230,8 +223,8 @@ impl App {
 
                     let possible_pos = gpu
                         .egui
-                        .platform
-                        .context()
+                        .winit
+                        .egui_ctx()
                         .input(|i: &egui::InputState| i.pointer.hover_pos());
 
                     match (grabbed, possible_pos) {
@@ -298,72 +291,84 @@ impl App {
                     label: Some("Encoder"),
                 });
 
-        let frame = gpu
-            .surface
-            .get_current_texture()
-            .expect("Failed to acquire next swap chain texture");
+        let wgpu::CurrentSurfaceTexture::Success(frame) = gpu.surface.get_current_texture() else {
+            // failed to get the frame, returning without a render
+            return;
+        };
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-
-        setup_renderpass(&mut encoder, &view, &gpu.render_pipeline, &gpu.bind_group);
 
         if self.compute_per_second_timer.ready() {
             self.compute_per_second = self.compute_counter;
             self.compute_counter = 0;
         }
 
-        let full_output = create_ui(
-            &mut gpu.egui.platform,
-            &mut gpu.renderer,
-            &self.compute_per_second,
+        let raw_input = gpu.egui.winit.take_egui_input(gpu.window.as_ref());
+        let mut full_output = gpu.egui.winit.egui_ctx().run_ui(raw_input, |ui| {
+            create_ui(ui, &mut gpu.renderer, &self.compute_per_second)
+        });
+        gpu.egui.winit.handle_platform_output(
+            gpu.window.as_ref(),
+            std::mem::take(&mut full_output.platform_output),
         );
 
         let paint_jobs = gpu
             .egui
-            .platform
-            .context()
+            .winit
+            .egui_ctx()
             .tessellate(full_output.shapes, full_output.pixels_per_point);
 
-        if self.show_ui {
-            let rpass = &mut gpu.egui.rpass;
-            let screen = &gpu.egui.screen_descriptor;
+        let screen = ScreenDescriptor {
+            size_in_pixels: gpu.egui.screen_descriptor.size_in_pixels,
+            pixels_per_point: gpu.egui.screen_descriptor.pixels_per_point,
+        };
 
-            rpass
-                .add_textures(
-                    &gpu.renderer.device,
-                    &gpu.renderer.queue,
-                    &full_output.textures_delta,
-                )
-                .expect("couldnt add textures");
-            rpass.update_buffers(
+        // Upload egui font/image textures before they are used in the render pass.
+        for (id, image_delta) in &full_output.textures_delta.set {
+            gpu.egui.renderer.update_texture(
                 &gpu.renderer.device,
                 &gpu.renderer.queue,
-                &paint_jobs,
-                screen,
+                *id,
+                &image_delta[0],
             );
-            rpass
-                .execute(&mut encoder, &view, &paint_jobs, screen, None)
-                .expect("egui render pass failed");
+        }
+
+        gpu.egui.renderer.update_buffers(
+            &gpu.renderer.device,
+            &gpu.renderer.queue,
+            &mut encoder,
+            &paint_jobs,
+            &screen,
+        );
+
+        {
+            let mut render_pass =
+                setup_renderpass(&mut encoder, &view, &gpu.render_pipeline, &gpu.bind_group);
+
+            if self.show_ui {
+                gpu.egui
+                    .renderer
+                    .render(&mut render_pass, &paint_jobs, &screen);
+            }
         }
 
         gpu.renderer.queue.submit(Some(encoder.finish()));
-        frame.present();
+        gpu.renderer.queue.present(frame);
 
-        gpu.egui
-            .rpass
-            .remove_textures(full_output.textures_delta)
-            .expect("textures could not be removed");
+        for id in &full_output.textures_delta.free {
+            gpu.egui.renderer.free_texture(id);
+        }
 
         if self.movement_mode {
             let delta = std::mem::take(&mut self.mouse_delta);
-            gpu.renderer.on_update(delta, &gpu.egui.platform.context());
+            gpu.renderer.on_update(delta, gpu.egui.winit.egui_ctx());
         }
 
         if gpu
             .egui
-            .platform
-            .context()
+            .winit
+            .egui_ctx()
             .input(|i: &egui::InputState| i.key_pressed(egui::Key::F11))
         {
             self.show_ui = !self.show_ui;
@@ -377,10 +382,10 @@ impl App {
 
 impl Gpu {
     fn new(target: &ActiveEventLoop) -> Self {
-        let instance = wgpu::Instance::new(&InstanceDescriptor {
-            backends: Backends::VULKAN,
-            ..Default::default()
-        });
+        let mut descriptor =
+            InstanceDescriptor::new_with_display_handle(Box::new(target.owned_display_handle()));
+        descriptor.backends = wgpu::Backends::VULKAN;
+        let instance = wgpu::Instance::new(descriptor.with_env());
 
         // window width is set at 1600, because GPU buffer requires n * 256 bytes (n * 64 pixels * 4*u8 colors ) for every horisontal row,
         // changing it to not be a multiple of 64 requires implementing buffer values when getting colors from the GPU
@@ -454,8 +459,6 @@ impl Gpu {
         let (renderer, compute_bindgroup_layout, compute_bind_group) =
             Renderer::new(camera, scene, device, queue, size, params);
 
-        // The renderer owns the device and queue; everything below uses those.
-
         // ################################ GPU COMPUTE PIPELINE #########################################
 
         let compute_shader_code = include_str!("compute_shader.wgsl")
@@ -477,7 +480,7 @@ impl Gpu {
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Compute Pipeline Layout"),
-                    bind_group_layouts: &[&compute_bindgroup_layout],
+                    bind_group_layouts: &[Some(&compute_bindgroup_layout)],
                     immediate_size: 0,
                 });
 
@@ -506,7 +509,7 @@ impl Gpu {
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: None,
-                    bind_group_layouts: &[&bind_group_layout],
+                    bind_group_layouts: &[Some(&bind_group_layout)],
                     immediate_size: 0,
                 });
 
@@ -521,26 +524,30 @@ impl Gpu {
             present_mode: wgpu::PresentMode::Immediate,
             desired_maximum_frame_latency: 2,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            color_space: wgpu::SurfaceColorSpace::Auto,
             view_formats: vec![SURFACE_FORMAT],
         };
 
         surface.configure(&renderer.device, &surface_config);
 
-        let scale_factor = window.scale_factor();
         let egui = EguiState {
-            platform: Platform::new(PlatformDescriptor {
-                physical_width: size.width,
-                physical_height: size.height,
-                scale_factor,
-                font_definitions: Default::default(),
-                style: Default::default(),
-            }),
+            winit: egui_winit::State::new(
+                egui::Context::default(),
+                egui::ViewportId::ROOT,
+                &window,
+                None,
+                None,
+                None,
+            ),
+            renderer: egui_wgpu::Renderer::new(
+                &renderer.device,
+                surface_config.format,
+                egui_wgpu::RendererOptions::default(),
+            ),
             screen_descriptor: ScreenDescriptor {
-                physical_width: size.width,
-                physical_height: size.height,
-                scale_factor: scale_factor as f32,
+                size_in_pixels: [size.width, size.height],
+                pixels_per_point: window.scale_factor() as f32,
             },
-            rpass: EguiRenderPass::new(&renderer.device, surface_config.format, 1),
         };
 
         Self {
@@ -562,8 +569,8 @@ impl Gpu {
         self.surface_config.width = size.width;
         self.surface_config.height = size.height;
 
-        self.egui.screen_descriptor.physical_width = size.width;
-        self.egui.screen_descriptor.physical_height = size.height;
+        self.egui.screen_descriptor.size_in_pixels = [size.width, size.height];
+        self.egui.screen_descriptor.pixels_per_point = self.window.scale_factor() as f32;
 
         self.compute_bind_group = self.renderer.on_resize(&size);
 
@@ -633,8 +640,8 @@ fn setup_renderpass(
     view: &wgpu::TextureView,
     render_pipeline: &wgpu::RenderPipeline,
     bind_group: &BindGroup,
-) {
-    let mut rpass: wgpu::RenderPass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+) -> wgpu::RenderPass<'static> {
+    let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: None,
         multiview_mask: None,
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -653,6 +660,7 @@ fn setup_renderpass(
     rpass.set_pipeline(render_pipeline);
     rpass.set_bind_group(0, bind_group, &[]);
     rpass.draw(0..6, 0..1);
+    rpass.forget_lifetime()
 }
 
 fn create_render_pipeline(
@@ -660,7 +668,6 @@ fn create_render_pipeline(
     pipeline_layout: &PipelineLayout,
     swapchain_format: TextureFormat,
 ) -> wgpu::RenderPipeline {
-    // Load the shaders from disk
     let shader = device.create_shader_module(include_wgsl!("render_shader.wgsl"));
 
     let render_pipeline: wgpu::RenderPipeline =
@@ -700,6 +707,7 @@ async fn create_adapter(instance: &wgpu::Instance, surface: &Surface<'_>) -> wgp
             force_fallback_adapter: false,
             // Request an adapter which can render to our surface
             compatible_surface: Some(surface),
+            apply_limit_buckets: false,
         })
         .await
         .expect("Failed to find an appropriate adapter")
@@ -714,7 +722,6 @@ async fn generate_device_and_queue(adapter: &Adapter) -> (Device, Queue) {
         .request_device(&wgpu::DeviceDescriptor {
             label: None,
             required_features: wgpu::Features::empty(),
-            // Make sure we use the texture resolution limits from the adapter, so we can support images the size of the swapchain.
             required_limits: adapter_limits,
             memory_hints: wgpu::MemoryHints::default(),
             trace: wgpu::Trace::Off,
@@ -751,28 +758,17 @@ macro_rules! create_drag_value {
     }};
 }
 
-fn create_ui(
-    platform: &mut Platform,
-    screne_renderer: &mut Renderer,
-    compute_per_second: &u32,
-) -> FullOutput {
-    platform.begin_pass();
-
-    // important, create a egui context, do not use platform.conmtext()
-    let egui_context = platform.context();
-
-    let mut style = (*egui_context.style()).clone();
-    style.visuals.override_text_color = Some(Color32::from_rgb(200, 200, 200));
-    egui_context.set_style(style);
+fn create_ui(ui: &mut egui::Ui, screne_renderer: &mut Renderer, compute_per_second: &u32) {
+    ui.visuals_mut().override_text_color = Some(Color32::from_rgb(200, 200, 200));
 
     let transparent_frame = Frame::new().fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200));
 
     let mut interacted = false;
 
-    egui::SidePanel::right("side_panel")
+    egui::Panel::right("side_panel")
         .resizable(false)
         .frame(transparent_frame)
-        .show(&egui_context, |ui| {
+        .show(ui, |ui| {
             ui.set_max_width(180.0);
 
             ui.label(format!("fps: {}", compute_per_second));
@@ -924,8 +920,6 @@ fn create_ui(
     if interacted {
         screne_renderer.update_scene()
     }
-
-    egui_context.end_pass()
 }
 
 fn ui_material_selection(
