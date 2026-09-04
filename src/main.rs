@@ -213,7 +213,10 @@ impl App {
 
             WindowEvent::CloseRequested => {
                 // Exit the application
-                gpu.renderer.device.poll(wgpu::Maintain::Wait);
+                gpu.renderer
+                    .device
+                    .poll(wgpu::PollType::Wait)
+                    .expect("device poll failed");
                 target.exit();
             }
 
@@ -636,6 +639,7 @@ fn setup_renderpass(
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
             view,
             resolve_target: None,
+            depth_slice: None,
             ops: wgpu::Operations {
                 load: wgpu::LoadOp::Load,
                 store: wgpu::StoreOp::Store,
@@ -706,16 +710,14 @@ async fn generate_device_and_queue(adapter: &Adapter) -> (Device, Queue) {
         ..wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits())
     };
     adapter
-        .request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                required_features: wgpu::Features::empty(),
-                // Make sure we use the texture resolution limits from the adapter, so we can support images the size of the swapchain.
-                required_limits: adapter_limits,
-                memory_hints: wgpu::MemoryHints::default(),
-            },
-            None,
-        )
+        .request_device(&wgpu::DeviceDescriptor {
+            label: None,
+            required_features: wgpu::Features::empty(),
+            // Make sure we use the texture resolution limits from the adapter, so we can support images the size of the swapchain.
+            required_limits: adapter_limits,
+            memory_hints: wgpu::MemoryHints::default(),
+            trace: wgpu::Trace::Off,
+        })
         .await
         .expect("Failed to create device")
 }
