@@ -485,7 +485,7 @@ impl Gpu {
                     label: Some("Compute Pipeline"),
                     layout: Some(&compute_pipeline_layout),
                     module: &compute_module,
-                    entry_point: "main",
+                    entry_point: Some("main"),
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
                     cache: None,
                 });
@@ -664,13 +664,13 @@ fn create_render_pipeline(
             layout: Some(pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: swapchain_format,
@@ -921,7 +921,7 @@ fn create_ui(
         screne_renderer.update_scene()
     }
 
-    egui_context.end_frame()
+    egui_context.end_pass()
 }
 
 fn ui_material_selection(
