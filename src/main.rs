@@ -48,7 +48,7 @@ const FRAMETIME: Duration = Duration::from_millis(5);
 
 const COMPUTETIME: Duration = Duration::from_micros(800);
 
-const COMPUTATION_PER_FRAME: u32 = 5;
+const COMPUTATION_PER_FRAME: u32 = 10;
 
 pub fn main() {
     env_logger::init();
@@ -718,12 +718,13 @@ async fn generate_device_and_queue(adapter: &Adapter) -> (Device, Queue) {
         max_storage_buffers_per_shader_stage: 6,
         ..wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits())
     };
+
     adapter
         .request_device(&wgpu::DeviceDescriptor {
             label: None,
             required_features: wgpu::Features::empty(),
             required_limits: adapter_limits,
-            memory_hints: wgpu::MemoryHints::default(),
+            memory_hints: wgpu::MemoryHints::Performance,
             trace: wgpu::Trace::Off,
             experimental_features: wgpu::ExperimentalFeatures::disabled(),
         })
