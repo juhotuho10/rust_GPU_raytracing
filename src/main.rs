@@ -25,7 +25,7 @@ use wgpu::{
 
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
-    event::{ElementState, Event, KeyEvent, MouseButton, WindowEvent},
+    event::{DeviceEvent, ElementState, Event, KeyEvent, MouseButton, WindowEvent},
     event_loop::EventLoop,
     keyboard::{KeyCode, PhysicalKey},
     window::{CursorGrabMode, Window},
@@ -48,15 +48,12 @@ const SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 pub fn main() {
     let event_loop = EventLoop::new().expect("failed to make eventloop");
 
-    let builder = winit::window::WindowBuilder::new();
-
     // window width is set at 1600, because GPU buffer requires n * 256 bytes (n * 64 pixels * 4*u8 colors ) for every horisontal row,
     // changing it to not be a multiple of 64 requires implementing buffer values when getting colors from the GPU
     let window_size = PhysicalSize::new(1600, 900);
 
-    let window = builder
-        .with_inner_size(window_size)
-        .build(&event_loop)
+    let window = event_loop
+        .create_window(winit::window::Window::default_attributes().with_inner_size(window_size))
         .expect("failed to make window");
 
     window.set_resizable(false);
@@ -75,6 +72,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     );
 
     let mut current_mouse_pos = mouse_resting_position;
+    let mut mouse_delta = egui::vec2(0.0, 0.0);
 
     let mut show_ui = true;
 
@@ -175,6 +173,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         module: &compute_module,
         entry_point: "main",
         compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
     });
 
     // #####################################################################################
@@ -241,21 +240,24 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         .run(/*move*/ |event, target| {
             // Have the closure take ownership of the resources.
 
-            platform.handle_event(&event);
             let _ = (&instance, &pipeline_layout);
 
             match event {
+                Event::DeviceEvent {
+                    event: DeviceEvent::MouseMotion { delta: (dx, dy) },
+                    ..
+                } => {
+                    if movement_mode {
+                        mouse_delta += egui::vec2(dx as f32, dy as f32);
+                    }
+                    window.request_redraw();
+                }
                 Event::DeviceEvent { .. } => {
                     window.request_redraw();
                 }
                 Event::WindowEvent { event, .. } => {
+                    platform.handle_event(&event);
                     match event {
-                        WindowEvent::CursorMoved { position, .. } => {
-                            if movement_mode {
-                                current_mouse_pos = pos2(position.x as f32, position.y as f32);
-                            }
-                        }
-
                         WindowEvent::Resized(new_size) => {
                             size.width = new_size.width.max(1);
                             size.height = new_size.height.max(1);
@@ -286,7 +288,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
                         WindowEvent::CloseRequested => {
                             // Exit the application
-                            device.poll(wgpu::MaintainBase::Wait);
+                            device.poll(wgpu::Maintain::Wait);
                             target.exit();
                         }
 
@@ -468,8 +470,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 //-------------
 
                                 if movement_mode {
-                                    let delta = current_mouse_pos - mouse_resting_position;
-
+                                    let delta = std::mem::take(&mut mouse_delta);
                                     scene_renderer.on_update(delta, &platform.context());
                                 }
 
@@ -487,6 +488,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                         } // Handle other window events that are not explicitly handled above
                     }
                 }
+
                 _ => {
                     window.request_redraw();
                 } // Handle other types of events that are not window events
@@ -605,6 +607,7 @@ fn create_render_pipeline(
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
+            cache: None,
         });
 
     render_pipeline
@@ -634,6 +637,7 @@ async fn generate_device_and_queue(adapter: &Adapter) -> (Device, Queue) {
                 required_features: wgpu::Features::empty(),
                 // Make sure we use the texture resolution limits from the adapter, so we can support images the size of the swapchain.
                 required_limits: adapter_limits,
+                memory_hints: wgpu::MemoryHints::default(),
             },
             None,
         )
@@ -673,7 +677,7 @@ macro_rules! create_drag_value {
             .add(
                 DragValue::new($value)
                     .speed($speed)
-                    .clamp_range($range)
+                    .range($range)
                     .prefix($prefix),
             )
             .changed()
