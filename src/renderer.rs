@@ -25,11 +25,11 @@ pub struct RenderScene {
     pub env_map_size: [u32; 2],
 }
 
-pub struct Renderer<'a> {
+pub struct Renderer {
     pub camera: Camera,
     pub scene: RenderScene,
-    pub device: &'a Device,
-    pub queue: &'a Queue,
+    pub device: Device,
+    pub queue: Queue,
     pub accumulate: bool,
     pub object_index: usize,
     pub sphere_index: usize,
@@ -38,15 +38,15 @@ pub struct Renderer<'a> {
     buffers: buffers::DataBuffers,
 }
 
-impl Renderer<'_> {
-    pub fn new<'a>(
+impl Renderer {
+    pub fn new(
         camera: Camera,
         scene: RenderScene,
-        device: &'a Device,
-        queue: &'a Queue,
+        device: Device,
+        queue: Queue,
         size: winit::dpi::PhysicalSize<u32>,
         params: Params,
-    ) -> (Renderer<'a>, BindGroupLayout, BindGroup) {
+    ) -> (Renderer, BindGroupLayout, BindGroup) {
         let camera_rays = camera.recalculate_ray_directions();
         let accumulate = params.accumulate == 1;
 
@@ -58,7 +58,7 @@ impl Renderer<'_> {
         };
 
         let (buffers, bind_group_layout, compute_bind_group) = buffers::DataBuffers::new(
-            device,
+            &device,
             &size,
             ray_camera,
             &camera_rays,
@@ -72,14 +72,14 @@ impl Renderer<'_> {
 
         buffers.update_texture_buffer(
             &scene.image_textures,
-            queue,
+            &queue,
             scene.texture_size[0],
             scene.texture_size[1],
         );
 
         buffers.update_environment_map_buffer(
             &scene.environment_map,
-            queue,
+            &queue,
             scene.env_map_size[0],
             scene.env_map_size[1],
         );
@@ -103,7 +103,7 @@ impl Renderer<'_> {
     pub fn on_resize(&mut self, size: &winit::dpi::PhysicalSize<u32>) -> BindGroup {
         self.camera.on_resize(size.width, size.height);
         self.reset_accumulation();
-        self.buffers.recreate_output_texture(self.device, size)
+        self.buffers.recreate_output_texture(&self.device, size)
     }
 
     pub fn on_update(&mut self, mouse_delta: egui::Vec2, egui_context: &Context) {
@@ -124,7 +124,7 @@ impl Renderer<'_> {
                 bytemuck::cast_slice(&[new_camera]),
             );
 
-            self.buffers.update_ray_directions(self.queue, &new_rays);
+            self.buffers.update_ray_directions(&self.queue, &new_rays);
         };
     }
 
@@ -147,14 +147,14 @@ impl Renderer<'_> {
         };
 
         self.buffers
-            .reset_accumulation(self.device, self.queue, &[params]);
+            .reset_accumulation(&self.device, &self.queue, &[params]);
     }
 
     pub fn update_scene(&mut self) {
         self.reset_accumulation();
 
         let new_spheres = &self.scene.spheres;
-        self.buffers.update_spheres(self.queue, new_spheres);
+        self.buffers.update_spheres(&self.queue, new_spheres);
 
         for object in &mut self.scene.objects {
             object.update_triangles();
@@ -172,30 +172,30 @@ impl Renderer<'_> {
 
         self.buffers.update_texture_buffer(
             &self.scene.image_textures,
-            self.queue,
+            &self.queue,
             self.scene.texture_size[0],
             self.scene.texture_size[1],
         );
 
         self.buffers.update_environment_map_buffer(
             &self.scene.environment_map,
-            self.queue,
+            &self.queue,
             self.scene.env_map_size[0],
             self.scene.env_map_size[1],
         );
 
         let (new_object_info, old_sub_object_info, new_triangles) = get_triangle_data(&self.scene);
 
-        self.buffers.update_triangles(self.queue, &new_triangles);
+        self.buffers.update_triangles(&self.queue, &new_triangles);
 
         self.buffers
-            .update_object_info(self.queue, &new_object_info);
+            .update_object_info(&self.queue, &new_object_info);
 
         self.buffers
-            .update_sub_object_info(self.queue, &old_sub_object_info);
+            .update_sub_object_info(&self.queue, &old_sub_object_info);
 
         let new_materials = &self.scene.materials;
-        self.buffers.update_materials(self.queue, new_materials);
+        self.buffers.update_materials(&self.queue, new_materials);
     }
 
     pub fn compute_frame(
@@ -229,7 +229,7 @@ impl Renderer<'_> {
                 env_map_height: self.scene.env_map_size[1],
             };
 
-            self.buffers.update_accumulation(self.queue, &[params]);
+            self.buffers.update_accumulation(&self.queue, &[params]);
 
             self.accumulation_index += 1;
         }

@@ -15,26 +15,26 @@ use define_scene::define_render_scene;
 
 use triangle_object::SceneObject;
 
-use egui::{Color32, DragValue, Frame, FullOutput, pos2};
+use egui::{Color32, DragValue, Frame, FullOutput};
 
 use wgpu::{
-    Adapter, Backends, BindGroup, BlendState, Device, Dx12Compiler, Gles3MinorVersion, Instance,
-    InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface, TextureFormat,
-    TextureUsages, include_wgsl,
+    Adapter, Backends, BindGroup, BlendState, Device, InstanceDescriptor, PipelineLayout, Queue,
+    Surface, TextureFormat, TextureUsages, include_wgsl,
 };
 
 use winit::{
+    application::ApplicationHandler,
     dpi::{PhysicalPosition, PhysicalSize},
-    event::{DeviceEvent, ElementState, Event, KeyEvent, MouseButton, WindowEvent},
-    event_loop::EventLoop,
-    keyboard::{KeyCode, PhysicalKey},
-    window::{CursorGrabMode, Window},
+    event::{DeviceEvent, ElementState, MouseButton, WindowEvent},
+    event_loop::{ActiveEventLoop, EventLoop},
+    window::{CursorGrabMode, Window, WindowId},
 };
 
 use egui_wgpu_backend::{RenderPass as EguiRenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 
-use std::time::Instant;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 pub const TRIANGLE_COUNT: u64 = 5552;
 pub const SUBOBJECT_COUNT: u64 = 802;
@@ -45,461 +45,536 @@ pub const MATERIAL_COUNT: u64 = 19;
 
 const SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
+const FRAMETIME: Duration = Duration::from_millis(5);
+
+const COMPUTETIME: Duration = Duration::from_micros(800);
+
+const COMPUTATION_PER_FRAME: u32 = 5;
+
 pub fn main() {
+    env_logger::init();
+
     let event_loop = EventLoop::new().expect("failed to make eventloop");
 
-    // window width is set at 1600, because GPU buffer requires n * 256 bytes (n * 64 pixels * 4*u8 colors ) for every horisontal row,
-    // changing it to not be a multiple of 64 requires implementing buffer values when getting colors from the GPU
-    let window_size = PhysicalSize::new(1600, 900);
+    let mut app = App::new();
 
-    let window = event_loop
-        .create_window(winit::window::Window::default_attributes().with_inner_size(window_size))
-        .expect("failed to make window");
+    event_loop.run_app(&mut app).expect("Eventloop failed");
 
-    window.set_resizable(false);
-    env_logger::init();
-    pollster::block_on(run(event_loop, window));
+    // App fields drop in declaration order: gpu drops with the renderer, which owns
+    // the device and queue, so GPU resources are released safely.
 }
 
-async fn run(event_loop: EventLoop<()>, window: Window) {
-    let mut movement_mode = false;
+struct App {
+    gpu: Option<Gpu>,
+    movement_mode: bool,
+    mouse_resting_position: egui::Pos2,
+    mouse_delta: egui::Vec2,
+    last_mouse_pos: egui::Pos2,
+    show_ui: bool,
+    compute_counter: u32,
+    compute_per_second: u32,
+    frame_timer: Timer,
+    compute_timer: Timer,
+    compute_per_second_timer: Timer,
+}
 
-    let mut size = window.inner_size();
+// Everything that requires an existing window. Created once in `resumed`.
+struct Gpu {
+    window: Arc<Window>,
+    surface: Surface<'static>,
+    renderer: Renderer,
+    compute_pipeline: wgpu::ComputePipeline,
+    compute_bind_group: BindGroup,
+    sampler: wgpu::Sampler,
+    bind_group_layout: wgpu::BindGroupLayout,
+    bind_group: BindGroup,
+    render_pipeline: wgpu::RenderPipeline,
+    surface_config: wgpu::SurfaceConfiguration,
+    egui: EguiState,
+}
 
-    let mut mouse_resting_position = egui::pos2(
+struct EguiState {
+    platform: Platform,
+    screen_descriptor: ScreenDescriptor,
+    rpass: EguiRenderPass,
+}
+
+// ##########################################################################################################################
+// ########################################################## Timer #########################################################
+// ##########################################################################################################################
+struct Timer {
+    period: Duration,
+    last: Instant,
+}
+
+impl Timer {
+    fn new(period: Duration) -> Self {
+        Self {
+            period,
+            last: Instant::now(),
+        }
+    }
+
+    fn ready(&mut self) -> bool {
+        if self.last.elapsed() >= self.period {
+            self.last = Instant::now();
+            true
+        } else {
+            false
+        }
+    }
+}
+
+// ##########################################################################################################################
+// ########################################################## App imp #######################################################
+// ##########################################################################################################################
+
+fn center_of(size: PhysicalSize<u32>) -> egui::Pos2 {
+    egui::pos2(
         (size.width as f32 / 2.).round(),
         (size.height as f32 / 2.).round(),
-    );
-
-    let mut current_mouse_pos = mouse_resting_position;
-    let mut mouse_delta = egui::vec2(0.0, 0.0);
-
-    let mut show_ui = true;
-
-    let mut compute_counter: u32 = 0;
-    let mut compute_per_second: u32 = 0;
-
-    let camera = Camera::new(size.width, size.height);
-
-    let scene: renderer::RenderScene = define_render_scene();
-
-    let mut last_mouse_pos: egui::Pos2 = pos2(0., 0.);
-
-    let frametime_target = 5; // milliseconds
-
-    let computetime_target = 0.8; // milliseconds
-
-    let computation_per_frame = 5;
-
-    let instance = generate_instance();
-
-    let surface: Surface = instance
-        .create_surface(&window)
-        .expect("failed to make a surface");
-    let adapter = create_adapter(&instance, &surface).await;
-    // Create the logical device and command queue
-    let (device, queue) = generate_device_and_queue(&adapter).await;
-
-    let triangle_count = scene
-        .objects
-        .iter()
-        .map(|obj: &SceneObject| obj.object_triangles.len())
-        .sum::<usize>() as u32;
-
-    let sub_object_count = scene
-        .objects
-        .iter()
-        .map(|obj: &SceneObject| obj.sub_object_info.len())
-        .sum::<usize>() as u32;
-
-    println!("the following numbers should be the same in the compute shader for the buffer sizes");
-    dbg!(triangle_count);
-    dbg!(sub_object_count);
-    dbg!(scene.objects.len());
-
-    dbg!(scene.spheres.len());
-    dbg!(scene.materials.len());
-
-    assert_eq!(triangle_count, TRIANGLE_COUNT as u32);
-    assert_eq!(sub_object_count, SUBOBJECT_COUNT as u32);
-    assert_eq!(scene.objects.len(), OBJECT_COUNT as usize);
-
-    assert_eq!(scene.spheres.len(), SPHERE_COUNT as usize);
-    assert_eq!(scene.materials.len(), MATERIAL_COUNT as usize);
-
-    // Create uniform buffer
-    let params = Params {
-        screen_width: size.width,
-        screen_height: size.height,
-        accumulation_index: 1,
-        accumulate: 1,
-        sphere_count: scene.spheres.len() as u32,
-        object_count: scene.objects.len() as u32,
-        compute_per_frame: computation_per_frame,
-        texture_width: scene.texture_size[0],
-        texture_height: scene.texture_size[1],
-        textue_count: scene.image_textures.len() as u32,
-        env_map_width: scene.env_map_size[0],
-        env_map_height: scene.env_map_size[1],
-    };
-
-    let (mut scene_renderer, compute_bindgroup_layout, mut compute_bind_group) =
-        Renderer::new(camera, scene, &device, &queue, size, params);
-
-    // ################################ GPU COMPUTE PIPELINE #########################################
-
-    // compute shader compile time arguments
-    let compute_shader_code = include_str!("compute_shader.wgsl")
-        .replace("TRIANGLE_COUNT_PLACEHOLDER", &TRIANGLE_COUNT.to_string())
-        .replace("SUBOBJECT_COUNT_PLACEHOLDER", &SUBOBJECT_COUNT.to_string())
-        .replace("OBJECT_COUNT_PLACEHOLDER", &OBJECT_COUNT.to_string())
-        .replace("SPHERE_COUNT_PLACEHOLDER", &SPHERE_COUNT.to_string())
-        .replace("MATERIAL_COUNT_PLACEHOLDER", &MATERIAL_COUNT.to_string());
-
-    let compute_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("compute_shader.wgsl"),
-        source: wgpu::ShaderSource::Wgsl(compute_shader_code.into()),
-    });
-
-    let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("Compute Pipeline Layout"),
-        bind_group_layouts: &[&compute_bindgroup_layout],
-        push_constant_ranges: &[],
-    });
-
-    let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some("Compute Pipeline"),
-        layout: Some(&compute_pipeline_layout),
-        module: &compute_module,
-        entry_point: "main",
-        compilation_options: wgpu::PipelineCompilationOptions::default(),
-        cache: None,
-    });
-
-    // #####################################################################################
-    // ################################ RENDER PIPELINE #########################################
-
-    let sampler: wgpu::Sampler = generate_sampler(&device);
-
-    let (mut bind_group_layout, mut bind_group) =
-        create_device_bindgroup(&device, &scene_renderer.output_texture_view(), &sampler);
-
-    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: None,
-        bind_group_layouts: &[&bind_group_layout],
-        push_constant_ranges: &[],
-    });
-
-    let render_pipeline = create_render_pipeline(&device, &pipeline_layout, SURFACE_FORMAT);
-
-    let mut surface_config = wgpu::SurfaceConfiguration {
-        usage: TextureUsages::RENDER_ATTACHMENT,
-        format: SURFACE_FORMAT,
-        width: size.width,
-        height: size.height,
-        present_mode: wgpu::PresentMode::Immediate,
-        desired_maximum_frame_latency: 2,
-        alpha_mode: wgpu::CompositeAlphaMode::Auto,
-        view_formats: vec![SURFACE_FORMAT],
-    };
-
-    surface.configure(&device, &surface_config);
-
-    let window = &window;
-
-    /* ################################ EGUI CODE ##################################### */
-    // Initialize egui
-    let scale_factor = window.scale_factor();
-
-    let mut platform = Platform::new(PlatformDescriptor {
-        physical_width: size.width,
-        physical_height: size.height,
-        scale_factor,
-        font_definitions: Default::default(),
-        style: Default::default(),
-    });
-
-    let mut screen_descriptor = ScreenDescriptor {
-        physical_width: size.width,
-        physical_height: size.height,
-        scale_factor: scale_factor as f32,
-    };
-
-    let mut egui_rpass = EguiRenderPass::new(&device, surface_config.format, 1);
-
-    let mut fps_timer = Instant::now();
-
-    let mut compute_timer = Instant::now();
-
-    let mut compute_per_second_timer = Instant::now();
-
-    /* ################################################################################ */
-
-    //event_loop.set_control_flow(ControlFlow::Poll);
-    event_loop
-        .run(/*move*/ |event, target| {
-            // Have the closure take ownership of the resources.
-
-            let _ = (&instance, &pipeline_layout);
-
-            match event {
-                Event::DeviceEvent {
-                    event: DeviceEvent::MouseMotion { delta: (dx, dy) },
-                    ..
-                } => {
-                    if movement_mode {
-                        mouse_delta += egui::vec2(dx as f32, dy as f32);
-                    }
-                    window.request_redraw();
-                }
-                Event::DeviceEvent { .. } => {
-                    window.request_redraw();
-                }
-                Event::WindowEvent { event, .. } => {
-                    platform.handle_event(&event);
-                    match event {
-                        WindowEvent::Resized(new_size) => {
-                            size.width = new_size.width.max(1);
-                            size.height = new_size.height.max(1);
-
-                            surface_config.width = size.width;
-                            surface_config.height = size.height;
-
-                            screen_descriptor.physical_height = size.height;
-                            screen_descriptor.physical_width = size.width;
-
-                            mouse_resting_position = egui::pos2(
-                                (size.width as f32 / 2.).round(),
-                                (size.height as f32 / 2.).round(),
-                            );
-
-                            compute_bind_group = scene_renderer.on_resize(&size);
-
-                            (bind_group_layout, bind_group) = create_device_bindgroup(
-                                &device,
-                                &scene_renderer.output_texture_view(),
-                                &sampler,
-                            );
-
-                            surface.configure(&device, &surface_config);
-
-                            window.request_redraw();
-                        }
-
-                        WindowEvent::CloseRequested => {
-                            // Exit the application
-                            device.poll(wgpu::Maintain::Wait);
-                            target.exit();
-                        }
-
-                        WindowEvent::KeyboardInput {
-                            event:
-                                KeyEvent {
-                                    physical_key: PhysicalKey::Code(KeyCode::Space),
-                                    repeat: false,
-                                    state: ElementState::Pressed,
-                                    ..
-                                },
-                            ..
-                        } => {
-                            window.request_redraw();
-                        }
-
-                        WindowEvent::MouseInput {
-                            state,
-                            button: MouseButton::Right,
-                            ..
-                        } => match state {
-                            ElementState::Pressed => {
-                                let grabbed = window.set_cursor_grab(CursorGrabMode::Confined);
-
-                                let possible_pos = platform
-                                    .context()
-                                    .input(|i: &egui::InputState| i.pointer.hover_pos());
-
-                                match (grabbed, possible_pos) {
-                                    (Ok(_), Some(pos)) => {
-                                        movement_mode = true;
-
-                                        window.set_cursor_visible(false);
-
-                                        last_mouse_pos = pos;
-                                        current_mouse_pos = mouse_resting_position;
-                                    }
-                                    (Err(error), _) => {
-                                        println!("cound not grab the cursor, {}", error)
-                                    }
-
-                                    (_, _) => println!("could not find cursor position"),
-                                }
-
-                                window.request_redraw();
-                            }
-                            ElementState::Released => {
-                                // Logic when right mouse button is released
-
-                                let grab_release = window.set_cursor_grab(CursorGrabMode::None);
-                                window.set_cursor_visible(true);
-
-                                let pos_set = window.set_cursor_position(PhysicalPosition::new(
-                                    last_mouse_pos.x as u32,
-                                    last_mouse_pos.y as u32,
-                                ));
-
-                                match (grab_release, pos_set) {
-                                    (Ok(_), _) => movement_mode = false,
-                                    (Err(error), _) => {
-                                        println!("could not release cursor, {}", error)
-                                    }
-                                }
-
-                                window.request_redraw();
-                            }
-                        },
-
-                        WindowEvent::RedrawRequested => {
-                            //println!(
-                            //    "time 1: {}",
-                            //    start_time.elapsed().as_micros() as f32 / 1000.
-                            //);
-
-                            // #############################################################################################
-
-                            if compute_timer.elapsed().as_micros() as f32 / 1000.0
-                                > computetime_target
-                            {
-                                compute_timer = Instant::now();
-                                compute_counter += computation_per_frame;
-                                scene_renderer
-                                    .compute_frame(&compute_pipeline, &compute_bind_group);
-                            }
-
-                            if fps_timer.elapsed().as_millis() > frametime_target {
-                                fps_timer = Instant::now();
-
-                                if movement_mode {
-                                    let _ = window.set_cursor_position(PhysicalPosition::new(
-                                        mouse_resting_position.x,
-                                        mouse_resting_position.y,
-                                    ));
-                                }
-
-                                let mut encoder = device.create_command_encoder(
-                                    &wgpu::CommandEncoderDescriptor {
-                                        label: Some("Encoder"),
-                                    },
-                                );
-
-                                // #############################################################################################
-
-                                //println!(
-                                //    "time 3: {}",
-                                //    start_time.elapsed().as_micros() as f32 / 1000.
-                                //);
-
-                                // Logic to redraw the window
-                                let frame: wgpu::SurfaceTexture = surface
-                                    .get_current_texture()
-                                    .expect("Failed to acquire next swap chain texture");
-
-                                let view: wgpu::TextureView = frame
-                                    .texture
-                                    .create_view(&wgpu::TextureViewDescriptor::default());
-
-                                //let pixel_colors = scene_renderer.generate_pixels();
-
-                                setup_renderpass(
-                                    &mut encoder,
-                                    &view,
-                                    &render_pipeline,
-                                    &bind_group,
-                                );
-
-                                if compute_per_second_timer.elapsed().as_millis() > 1000 {
-                                    compute_per_second_timer = Instant::now();
-                                    compute_per_second = compute_counter;
-                                    compute_counter = 0;
-                                }
-
-                                let full_output = create_ui(
-                                    &mut platform,
-                                    &mut scene_renderer,
-                                    &compute_per_second,
-                                );
-
-                                let paint_jobs = platform
-                                    .context()
-                                    .tessellate(full_output.shapes, full_output.pixels_per_point);
-                                // ######### Adding egui renderpass to the encoder ###########
-                                if show_ui {
-                                    egui_rpass
-                                        .add_textures(&device, &queue, &full_output.textures_delta)
-                                        .expect("couldnt add textures");
-
-                                    egui_rpass.update_buffers(
-                                        &device,
-                                        &queue,
-                                        &paint_jobs,
-                                        &screen_descriptor,
-                                    );
-
-                                    egui_rpass
-                                        .execute(
-                                            &mut encoder,
-                                            &view,
-                                            &paint_jobs,
-                                            &screen_descriptor,
-                                            None,
-                                        )
-                                        .expect("egui render pass failed");
-                                }
-                                // ######### rendering the queue ###########
-                                queue.submit(Some(encoder.finish()));
-
-                                frame.present();
-
-                                //println!(
-                                //    "time 4: {}",
-                                //    start_time.elapsed().as_micros() as f32 / 1000.
-                                //);
-
-                                egui_rpass
-                                    .remove_textures(full_output.textures_delta)
-                                    .expect("textures could not be removed");
-
-                                //-------------
-
-                                if movement_mode {
-                                    let delta = std::mem::take(&mut mouse_delta);
-                                    scene_renderer.on_update(delta, &platform.context());
-                                }
-
-                                if platform
-                                    .context()
-                                    .input(|i: &egui::InputState| i.key_pressed(egui::Key::F11))
-                                {
-                                    show_ui = !show_ui;
-                                }
-                            }
-                        }
-
-                        _ => {
-                            window.request_redraw();
-                        } // Handle other window events that are not explicitly handled above
-                    }
-                }
-
-                _ => {
-                    window.request_redraw();
-                } // Handle other types of events that are not window events
+    )
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.gpu.is_none() {
+            let gpu = Gpu::new(event_loop);
+            self.mouse_resting_position = center_of(gpu.window.inner_size());
+            self.gpu = Some(gpu);
+        }
+    }
+
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
+        event: DeviceEvent,
+    ) {
+        if let DeviceEvent::MouseMotion { delta: (dx, dy) } = event
+            && self.movement_mode
+        {
+            self.mouse_delta += egui::vec2(dx as f32, dy as f32);
+        }
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        if let Some(gpu) = self.gpu.as_mut() {
+            gpu.egui.platform.handle_event(&event);
+        }
+        self.handle_window_event(event, event_loop);
+    }
+
+    // `about_to_wait` fires after every event batch, so redraws are requested here
+    // instead of in each individual event arm.
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(gpu) = self.gpu.as_ref() {
+            gpu.window.request_redraw();
+        }
+    }
+}
+
+impl App {
+    fn new() -> Self {
+        Self {
+            gpu: None,
+            movement_mode: false,
+            mouse_resting_position: egui::pos2(0.0, 0.0),
+            mouse_delta: egui::vec2(0.0, 0.0),
+            last_mouse_pos: egui::pos2(0.0, 0.0),
+            show_ui: true,
+            compute_counter: 0,
+            compute_per_second: 0,
+            frame_timer: Timer::new(FRAMETIME),
+            compute_timer: Timer::new(COMPUTETIME),
+            compute_per_second_timer: Timer::new(Duration::from_secs(1)),
+        }
+    }
+
+    fn handle_window_event(&mut self, event: WindowEvent, target: &ActiveEventLoop) {
+        let Some(gpu) = self.gpu.as_mut() else {
+            return;
+        };
+        let window = gpu.window.clone();
+
+        match event {
+            WindowEvent::Resized(new_size) => {
+                gpu.resize(PhysicalSize::new(
+                    new_size.width.max(1),
+                    new_size.height.max(1),
+                ));
+                self.mouse_resting_position = center_of(gpu.window.inner_size());
             }
-        })
-        .expect("Eventloop failed");
 
-    // explicitly dropping the data and GPU buffers in a safe manner, otherwise we get an error for exiting the application
-    drop(scene_renderer);
-    drop(device);
-    drop(queue);
+            WindowEvent::CloseRequested => {
+                // Exit the application
+                gpu.renderer.device.poll(wgpu::Maintain::Wait);
+                target.exit();
+            }
+
+            WindowEvent::MouseInput {
+                state,
+                button: MouseButton::Right,
+                ..
+            } => match state {
+                ElementState::Pressed => {
+                    let grabbed = window.set_cursor_grab(CursorGrabMode::Confined);
+
+                    let possible_pos = gpu
+                        .egui
+                        .platform
+                        .context()
+                        .input(|i: &egui::InputState| i.pointer.hover_pos());
+
+                    match (grabbed, possible_pos) {
+                        (Ok(_), Some(pos)) => {
+                            self.movement_mode = true;
+                            window.set_cursor_visible(false);
+                            self.last_mouse_pos = pos;
+                            self.mouse_delta = egui::vec2(0.0, 0.0);
+                        }
+                        (Err(error), _) => println!("cound not grab the cursor, {}", error),
+                        (_, _) => println!("could not find cursor position"),
+                    }
+                }
+                ElementState::Released => {
+                    let grab_release = window.set_cursor_grab(CursorGrabMode::None);
+                    window.set_cursor_visible(true);
+
+                    let pos_set = window.set_cursor_position(PhysicalPosition::new(
+                        self.last_mouse_pos.x as u32,
+                        self.last_mouse_pos.y as u32,
+                    ));
+
+                    match (grab_release, pos_set) {
+                        (Ok(_), _) => self.movement_mode = false,
+                        (Err(error), _) => println!("could not release cursor, {}", error),
+                    }
+                }
+            },
+
+            WindowEvent::RedrawRequested => {
+                self.redraw();
+            }
+
+            _ => {}
+        }
+    }
+
+    fn redraw(&mut self) {
+        let Some(gpu) = self.gpu.as_mut() else {
+            return;
+        };
+
+        if self.compute_timer.ready() {
+            self.compute_counter += COMPUTATION_PER_FRAME;
+            gpu.renderer
+                .compute_frame(&gpu.compute_pipeline, &gpu.compute_bind_group);
+        }
+
+        if !self.frame_timer.ready() {
+            return;
+        }
+
+        if self.movement_mode {
+            let _ = gpu.window.set_cursor_position(PhysicalPosition::new(
+                self.mouse_resting_position.x,
+                self.mouse_resting_position.y,
+            ));
+        }
+
+        let mut encoder =
+            gpu.renderer
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Encoder"),
+                });
+
+        let frame = gpu
+            .surface
+            .get_current_texture()
+            .expect("Failed to acquire next swap chain texture");
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        setup_renderpass(&mut encoder, &view, &gpu.render_pipeline, &gpu.bind_group);
+
+        if self.compute_per_second_timer.ready() {
+            self.compute_per_second = self.compute_counter;
+            self.compute_counter = 0;
+        }
+
+        let full_output = create_ui(
+            &mut gpu.egui.platform,
+            &mut gpu.renderer,
+            &self.compute_per_second,
+        );
+
+        let paint_jobs = gpu
+            .egui
+            .platform
+            .context()
+            .tessellate(full_output.shapes, full_output.pixels_per_point);
+
+        if self.show_ui {
+            let rpass = &mut gpu.egui.rpass;
+            let screen = &gpu.egui.screen_descriptor;
+
+            rpass
+                .add_textures(
+                    &gpu.renderer.device,
+                    &gpu.renderer.queue,
+                    &full_output.textures_delta,
+                )
+                .expect("couldnt add textures");
+            rpass.update_buffers(
+                &gpu.renderer.device,
+                &gpu.renderer.queue,
+                &paint_jobs,
+                screen,
+            );
+            rpass
+                .execute(&mut encoder, &view, &paint_jobs, screen, None)
+                .expect("egui render pass failed");
+        }
+
+        gpu.renderer.queue.submit(Some(encoder.finish()));
+        frame.present();
+
+        gpu.egui
+            .rpass
+            .remove_textures(full_output.textures_delta)
+            .expect("textures could not be removed");
+
+        if self.movement_mode {
+            let delta = std::mem::take(&mut self.mouse_delta);
+            gpu.renderer.on_update(delta, &gpu.egui.platform.context());
+        }
+
+        if gpu
+            .egui
+            .platform
+            .context()
+            .input(|i: &egui::InputState| i.key_pressed(egui::Key::F11))
+        {
+            self.show_ui = !self.show_ui;
+        }
+    }
+}
+
+// ##########################################################################################################################
+// ####################################################### GPU impl #########################################################
+// ##########################################################################################################################
+
+impl Gpu {
+    fn new(target: &ActiveEventLoop) -> Self {
+        let instance = wgpu::Instance::new(InstanceDescriptor {
+            backends: Backends::VULKAN,
+            ..Default::default()
+        });
+
+        // window width is set at 1600, because GPU buffer requires n * 256 bytes (n * 64 pixels * 4*u8 colors ) for every horisontal row,
+        // changing it to not be a multiple of 64 requires implementing buffer values when getting colors from the GPU
+        let window = Arc::new(
+            target
+                .create_window(
+                    Window::default_attributes()
+                        .with_inner_size(PhysicalSize::new(1600, 900))
+                        .with_resizable(false),
+                )
+                .expect("failed to make window"),
+        );
+
+        let surface: Surface<'static> = instance
+            .create_surface(window.clone())
+            .expect("failed to make a surface");
+
+        let adapter = pollster::block_on(create_adapter(&instance, &surface));
+        // Create the logical device and command queue
+        let (device, queue) = pollster::block_on(generate_device_and_queue(&adapter));
+
+        let size = window.inner_size();
+        let camera = Camera::new(size.width, size.height);
+
+        let scene: renderer::RenderScene = define_render_scene();
+        // ################################################################################
+
+        let triangle_count: usize = scene
+            .objects
+            .iter()
+            .map(|obj: &SceneObject| obj.object_triangles.len())
+            .sum();
+        let sub_object_count: usize = scene
+            .objects
+            .iter()
+            .map(|obj: &SceneObject| obj.sub_object_info.len())
+            .sum();
+
+        println!(
+            "the following numbers should be the same in the compute shader for the buffer sizes"
+        );
+        dbg!(triangle_count);
+        dbg!(sub_object_count);
+        dbg!(scene.objects.len());
+        dbg!(scene.spheres.len());
+        dbg!(scene.materials.len());
+
+        assert_eq!(triangle_count, TRIANGLE_COUNT as usize);
+        assert_eq!(sub_object_count, SUBOBJECT_COUNT as usize);
+        assert_eq!(scene.objects.len(), OBJECT_COUNT as usize);
+        assert_eq!(scene.spheres.len(), SPHERE_COUNT as usize);
+        assert_eq!(scene.materials.len(), MATERIAL_COUNT as usize);
+
+        // ################################################################################
+
+        let params = Params {
+            screen_width: size.width,
+            screen_height: size.height,
+            accumulation_index: 1,
+            accumulate: 1,
+            sphere_count: scene.spheres.len() as u32,
+            object_count: scene.objects.len() as u32,
+            compute_per_frame: COMPUTATION_PER_FRAME,
+            texture_width: scene.texture_size[0],
+            texture_height: scene.texture_size[1],
+            textue_count: scene.image_textures.len() as u32,
+            env_map_width: scene.env_map_size[0],
+            env_map_height: scene.env_map_size[1],
+        };
+
+        let (renderer, compute_bindgroup_layout, compute_bind_group) =
+            Renderer::new(camera, scene, device, queue, size, params);
+
+        // The renderer owns the device and queue; everything below uses those.
+
+        // ################################ GPU COMPUTE PIPELINE #########################################
+
+        let compute_shader_code = include_str!("compute_shader.wgsl")
+            .replace("TRIANGLE_COUNT_PLACEHOLDER", &TRIANGLE_COUNT.to_string())
+            .replace("SUBOBJECT_COUNT_PLACEHOLDER", &SUBOBJECT_COUNT.to_string())
+            .replace("OBJECT_COUNT_PLACEHOLDER", &OBJECT_COUNT.to_string())
+            .replace("SPHERE_COUNT_PLACEHOLDER", &SPHERE_COUNT.to_string())
+            .replace("MATERIAL_COUNT_PLACEHOLDER", &MATERIAL_COUNT.to_string());
+
+        let compute_module = renderer
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("compute_shader.wgsl"),
+                source: wgpu::ShaderSource::Wgsl(compute_shader_code.into()),
+            });
+
+        let compute_pipeline_layout =
+            renderer
+                .device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Compute Pipeline Layout"),
+                    bind_group_layouts: &[&compute_bindgroup_layout],
+                    push_constant_ranges: &[],
+                });
+
+        let compute_pipeline =
+            renderer
+                .device
+                .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("Compute Pipeline"),
+                    layout: Some(&compute_pipeline_layout),
+                    module: &compute_module,
+                    entry_point: "main",
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    cache: None,
+                });
+
+        // #####################################################################################
+        // ################################ RENDER PIPELINE #########################################
+        // #####################################################################################
+
+        let sampler = generate_sampler(&renderer.device);
+        let (bind_group_layout, bind_group) =
+            create_device_bindgroup(&renderer.device, &renderer.output_texture_view(), &sampler);
+
+        let pipeline_layout =
+            renderer
+                .device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: None,
+                    bind_group_layouts: &[&bind_group_layout],
+                    push_constant_ranges: &[],
+                });
+
+        let render_pipeline =
+            create_render_pipeline(&renderer.device, &pipeline_layout, SURFACE_FORMAT);
+
+        let surface_config = wgpu::SurfaceConfiguration {
+            usage: TextureUsages::RENDER_ATTACHMENT,
+            format: SURFACE_FORMAT,
+            width: size.width,
+            height: size.height,
+            present_mode: wgpu::PresentMode::Immediate,
+            desired_maximum_frame_latency: 2,
+            alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            view_formats: vec![SURFACE_FORMAT],
+        };
+
+        surface.configure(&renderer.device, &surface_config);
+
+        let scale_factor = window.scale_factor();
+        let egui = EguiState {
+            platform: Platform::new(PlatformDescriptor {
+                physical_width: size.width,
+                physical_height: size.height,
+                scale_factor,
+                font_definitions: Default::default(),
+                style: Default::default(),
+            }),
+            screen_descriptor: ScreenDescriptor {
+                physical_width: size.width,
+                physical_height: size.height,
+                scale_factor: scale_factor as f32,
+            },
+            rpass: EguiRenderPass::new(&renderer.device, surface_config.format, 1),
+        };
+
+        Self {
+            window,
+            surface,
+            renderer,
+            compute_pipeline,
+            compute_bind_group,
+            sampler,
+            bind_group_layout,
+            bind_group,
+            render_pipeline,
+            surface_config,
+            egui,
+        }
+    }
+
+    fn resize(&mut self, size: PhysicalSize<u32>) {
+        self.surface_config.width = size.width;
+        self.surface_config.height = size.height;
+
+        self.egui.screen_descriptor.physical_width = size.width;
+        self.egui.screen_descriptor.physical_height = size.height;
+
+        self.compute_bind_group = self.renderer.on_resize(&size);
+
+        let (bind_group_layout, bind_group) = create_device_bindgroup(
+            &self.renderer.device,
+            &self.renderer.output_texture_view(),
+            &self.sampler,
+        );
+        self.bind_group_layout = bind_group_layout;
+        self.bind_group = bind_group;
+
+        self.surface
+            .configure(&self.renderer.device, &self.surface_config);
+    }
 }
 
 fn create_device_bindgroup(
@@ -657,35 +732,18 @@ fn generate_sampler(device: &wgpu::Device) -> wgpu::Sampler {
     })
 }
 
-fn generate_instance() -> Instance {
-    let instance_desc: wgpu::InstanceDescriptor = InstanceDescriptor {
-        backends: Backends::VULKAN,
-        flags: InstanceFlags::default(),
-        dx12_shader_compiler: Dx12Compiler::default(),
-        gles_minor_version: Gles3MinorVersion::default(),
-    };
-
-    wgpu::Instance::new(instance_desc)
-}
-
 // ######################### UI CREATION ########################################
 
-// simple macro for makíng the UI more compact
+// simple macro for making the UI more compact
 macro_rules! create_drag_value {
     ($ui:expr, $value:expr, $speed:expr, $range:expr, $prefix:expr) => {{
-        if $ui
-            .add(
-                DragValue::new($value)
-                    .speed($speed)
-                    .range($range)
-                    .prefix($prefix),
-            )
-            .changed()
-        {
-            true
-        } else {
-            false
-        }
+        $ui.add(
+            DragValue::new($value)
+                .speed($speed)
+                .range($range)
+                .prefix($prefix),
+        )
+        .changed()
     }};
 }
 
