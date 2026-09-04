@@ -331,17 +331,17 @@ fn lerp(start: vec3<f32>, end: vec3<f32>, t: f32) -> vec3<f32>{
 }
 
 
-fn trace_ray(ray: Ray) -> HitPayload{
-
+fn trace_ray(ray: Ray) -> HitPayload {
     let sphere_hit_payload = check_spheres(ray);
-    let triangle_hit_payload = check_triangles(ray);
+    var best = sphere_hit_payload;
 
-    if sphere_hit_payload.hit_distance < triangle_hit_payload.hit_distance{
-        return sphere_hit_payload;
-    }else{
-        return triangle_hit_payload;
-    };
-    
+    // only accept triangle hits closer than the sphere hit
+    let triangle_hit_payload = check_triangles(ray, best.hit_distance);
+
+    if triangle_hit_payload.hit_distance < best.hit_distance {
+        best = triangle_hit_payload;
+    }
+    return best;
 }
 
 fn check_spheres(ray: Ray) -> HitPayload{
@@ -396,23 +396,20 @@ fn check_spheres(ray: Ray) -> HitPayload{
 }
 
 
-fn ray_in_bounds(ray: Ray, min_bounds: vec3<f32>, max_bounds: vec3<f32>) -> bool{
-
+fn ray_in_bounds(ray: Ray, min_bounds: vec3<f32>, max_bounds: vec3<f32>, t_max: f32) -> bool {
     // quick check to see if the ray falls within the object bounds
-
     let min_t: vec3<f32> = (min_bounds - ray.origin) * ray.inv_direction;
     let max_t: vec3<f32> = (max_bounds - ray.origin) * ray.inv_direction;
     let t1: vec3<f32> = min(min_t, max_t);
     let t2: vec3<f32> = max(min_t, max_t);
     let near_t: f32 = max(max(t1.x, t1.y), t1.z);
     let far_t: f32 = min(min(t2.x, t2.y), t2.z);
-    return near_t <= far_t && far_t >= 0.0;
+    return near_t <= far_t && far_t >= 0.0 && near_t < t_max; 
 }
 
+fn check_triangles(ray: Ray, t_max: f32) -> HitPayload{
 
-fn check_triangles(ray: Ray) -> HitPayload{
-
-    var closest_distance = F32_MAX;
+    var closest_distance = t_max;
     var closest_object_index: u32 = 0u;
     var closest_triangle_index: u32 = 0u;
     var closest_front_face: bool = false;
@@ -422,7 +419,7 @@ fn check_triangles(ray: Ray) -> HitPayload{
         let object_info: ObjectInfo = object_array[object_index];
 
         // quick way to filter out objects that can't be hit with ray
-        if !ray_in_bounds(ray, object_info.min_bounds, object_info.max_bounds){
+        if !ray_in_bounds(ray, object_info.min_bounds, object_info.max_bounds, closest_distance){
             continue;
         }
 
@@ -432,7 +429,7 @@ fn check_triangles(ray: Ray) -> HitPayload{
             let sub_object_info: SubObjectInfo = sub_object_array[sub_object_index];
 
                         
-            if !ray_in_bounds(ray, sub_object_info.min_bounds, sub_object_info.max_bounds){
+            if !ray_in_bounds(ray, sub_object_info.min_bounds, sub_object_info.max_bounds, closest_distance){
                 continue;
             }
 
@@ -441,6 +438,7 @@ fn check_triangles(ray: Ray) -> HitPayload{
                 let tri: SceneTriangle = triangle_array[triangle_index];
                 
                 let determinant: f32 = -dot(ray.direction, tri.calc_normal);
+
 
                 let inv_det: f32 = 1 / determinant;
                 
@@ -588,7 +586,7 @@ fn pcg_hash(value: u32) -> u32 {
 fn random(seed: ptr<function, u32>) -> f32 {
     // random float between 0 and 1 using pcg hash
     *seed = pcg_hash(*seed);
-    return normalize_u32(*seed);
+    return f32(*seed) / f32(U32_MAX);
 }
 
 
@@ -602,9 +600,5 @@ fn random_scaler(seed: ptr<function, u32>) -> vec3<f32>{
     return scaler * 2.0 - 1.0;
 }
 
-
-fn normalize_u32(value: u32) -> f32{
-    return f32(value) / f32(U32_MAX);
-}
 
 
