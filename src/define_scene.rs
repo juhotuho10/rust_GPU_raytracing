@@ -3,9 +3,7 @@ use glam::vec3a;
 
 use super::triangle_object::load_stl_files;
 
-use super::buffers::{SceneMaterial, SceneSphere};
-
-use super::renderer::RenderScene;
+use crate::scene::{RenderScene, SceneMaterial, SceneSphere};
 
 use super::image_texture::ImageTexture;
 

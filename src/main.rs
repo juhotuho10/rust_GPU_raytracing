@@ -1,7 +1,9 @@
+#[allow(dead_code, unused)]
 mod buffers;
 mod camera;
 mod image_texture;
 mod renderer;
+mod scene;
 mod triangle_object;
 
 use buffers::Params;
@@ -35,12 +37,24 @@ use egui_wgpu::ScreenDescriptor;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-pub const TRIANGLE_COUNT: u64 = 5552;
-pub const SUBOBJECT_COUNT: u64 = 802;
-pub const OBJECT_COUNT: u64 = 34;
+// Scene counts exported by build.rs, which runs the real define_render_scene().
+const fn env_count(value: &str) -> u64 {
+    let bytes = value.as_bytes();
+    let mut n = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        n = n * 10 + (bytes[i] - b'0') as u64;
+        i += 1;
+    }
+    n
+}
 
-pub const SPHERE_COUNT: u64 = 3;
-pub const MATERIAL_COUNT: u64 = 19;
+pub const TRIANGLE_COUNT: u64 = env_count(env!("TRIANGLE_COUNT"));
+pub const SUBOBJECT_COUNT: u64 = env_count(env!("SUBOBJECT_COUNT"));
+pub const OBJECT_COUNT: u64 = env_count(env!("OBJECT_COUNT"));
+
+pub const SPHERE_COUNT: u64 = env_count(env!("SPHERE_COUNT"));
+pub const MATERIAL_COUNT: u64 = env_count(env!("MATERIAL_COUNT"));
 
 const SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 

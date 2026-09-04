@@ -1,10 +1,4 @@
-use crate::buffers::{
-    ObjectInfo, Params, RayCamera, SceneMaterial, SceneSphere, SceneTriangle, SubObjectInfo,
-};
-
-use crate::triangle_object::SceneObject;
-
-use crate::image_texture::ImageTexture;
+use crate::buffers::{ObjectInfo, Params, RayCamera, SceneTriangle, SubObjectInfo};
 
 use super::camera::Camera;
 
@@ -14,16 +8,7 @@ use egui::Context;
 
 use wgpu::{BindGroup, BindGroupLayout, Device, Queue};
 
-#[derive(Debug, Clone)]
-pub struct RenderScene {
-    pub spheres: Vec<SceneSphere>,
-    pub texture_size: [u32; 2],
-    pub image_textures: Vec<ImageTexture>,
-    pub materials: Vec<SceneMaterial>,
-    pub objects: Vec<SceneObject>,
-    pub environment_map: ImageTexture,
-    pub env_map_size: [u32; 2],
-}
+pub use crate::scene::RenderScene;
 
 pub struct Renderer {
     pub camera: Camera,

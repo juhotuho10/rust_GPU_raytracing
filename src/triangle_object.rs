@@ -1,4 +1,4 @@
-use crate::buffers::{ObjectInfo, SceneTriangle, SubObjectInfo};
+use crate::scene::{ObjectInfo, SceneTriangle, SubObjectInfo};
 use glam::{Mat3A, Vec3A, vec3a};
 use std::fs::File;
 use std::io::BufReader;
@@ -36,7 +36,6 @@ pub fn load_stl_files(object_data_vec: &[ObjectCreation]) -> Vec<SceneObject> {
     scene_object_vec
 }
 
-#[derive(Debug, Clone)]
 pub struct SceneObject {
     normalized_points: Vec<Vec3A>,
     point_indexes: Vec<[usize; 3]>,
