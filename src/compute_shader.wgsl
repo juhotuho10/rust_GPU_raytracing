@@ -11,7 +11,7 @@ const MATERIAL_COUNT: u32 = MATERIAL_COUNT_PLACEHOLDER;
 
 @group(0) @binding(0) var<storage, read> params: Params;
 @group(0) @binding(1) var<storage, read> camera_rays: array<vec3<f32>>;
-@group(0) @binding(2) var<storage, read_write> output_data: array<u32>;
+@group(0) @binding(2) var output_tex: texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(3) var<uniform> ray_camera: RayCamera;
 @group(0) @binding(4) var<uniform> material_array: array<SceneMaterial, MATERIAL_COUNT>;
 @group(0) @binding(5) var<uniform> sphere_array: array<SceneSphere, SPERE_COUNT>;
@@ -42,6 +42,7 @@ fn sample_env_map(coords: vec2<f32>, texture_size: vec2<i32>) -> vec4<f32> {
 
 struct Params {
     width: u32,
+    height: u32,
     accumulation_index: u32,
     accumulate: u32,
     sphere_count: u32,   
@@ -52,8 +53,6 @@ struct Params {
     textue_count: u32,
     env_map_width: u32,
     env_map_height: u32,
-    // explicit padding to match 16 byte alignment
-    _padding1: u32,
       
 };
 
@@ -142,6 +141,12 @@ struct Ray {
 
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+
+    if global_id.x >= params.width || global_id.y >= params.height {
+        return;
+    }
+
+
     let index: u32 =  (global_id.y * params.width) + global_id.x;
 
     let bounces: u32 = 10u;
@@ -171,37 +176,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         render_color = clamp(f32_color, vec4<f32>(0.0), vec4<f32>(1.0));
     }
     
-    // pack 4 f32 values into a single u32 (4x u8 rgba color)
-    output_data[index] = pack_to_u32(render_color);
+    textureStore(output_tex, vec2<i32>(global_id.xy), render_color);
 
-
-    /*let count: u32 = object_array[0].triangle_count;
-
-    if (count == 202) {
-        output_data[index] = pack_to_u32(vec3<f32>(0.0, 1.0, 0.0)); // green
-    } else {
-        output_data[index] = pack_to_u32(vec3<f32>(1.0, 0.0, 0.0)); // red
-    };*/
-
-}
-
-
-fn pack_to_u32(vector: vec4<f32>) -> u32 {
-  // scale the f32 values from [0.0, 1.0] to [0.0, 255.0]
-    let scaled_r: u32 = u32(vector.r * 255.0);
-    let scaled_g: u32 = u32(vector.g * 255.0);
-    let scaled_b: u32 = u32(vector.b * 255.0);
-    let scaled_a: u32 = u32(vector.a * 255.0);
-
-
-    // extract the least significant 8 bits (same as converting to u8)
-    let byte0: u32 = scaled_r & 0xFFu;
-    let byte1: u32 = scaled_g & 0xFFu;
-    let byte2: u32 = scaled_b & 0xFFu;
-    let byte3: u32 = scaled_a & 0xFFu;
-
-    // pack the bits into a single u32 that will then be read as 4x u8 by the rendering pass
-    return (byte0 << 0) | (byte1 << 8) | (byte2 << 16) | (byte3 << 24);
 }
 
 fn random_unit_vector(seed: ptr<function, u32>) -> vec3<f32> {
@@ -223,7 +199,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
     var ray = Ray( 
         ray_camera.origin,
         camera_rays[index],
-        1 / ray_camera.origin
+        vec3<f32>(0.0)
     );
 
     var seed: u32 = pcg_hash(pcg_hash(index ^ (random_index * 0x9E3779B9u)));

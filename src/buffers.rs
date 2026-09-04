@@ -8,6 +8,7 @@ use super::image_texture::*;
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Params {
     pub screen_width: u32,       // float, aligned to 4 bytes
+    pub screen_height: u32,      // float, aligned to 4 bytes
     pub accumulation_index: u32, // u32, aligned to 4 bytes
     pub accumulate: u32,         // u32, aligned to 4 bytes
     pub sphere_count: u32,       // u32, aligned to 4 bytes
@@ -18,7 +19,6 @@ pub struct Params {
     pub textue_count: u32,       // u32, aligned to 4 bytes
     pub env_map_width: u32,      // u32, aligned to 4 bytes
     pub env_map_height: u32,     // u32, aligned to 4 bytes
-    pub _padding: [u8; 4],       // padding to ensure 16-byte alignment
 }
 
 #[repr(C)]
@@ -127,10 +127,8 @@ macro_rules! bind_group_entry {
 }
 
 pub struct DataBuffers {
-    pub output_buffer_size: u64,
-    pub accumulation_buffer_size: u64,
+    pub output_texture: Texture,
     pub ray_buffer: Buffer,
-    pub output_buffer: Buffer,
     pub params_buffer: Buffer,
     pub camera_buffer: Buffer,
     pub material_buffer: Buffer,
@@ -161,17 +159,6 @@ impl DataBuffers {
             label: Some("Ray Buffer"),
             contents: bytemuck::cast_slice(camera_rays),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-        });
-
-        // 4 bytes of u8 per pixel, RGBA
-        let output_buffer_size = (size.width * size.height * std::mem::size_of::<[u8; 4]>() as u32)
-            as wgpu::BufferAddress;
-
-        let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Output Buffer"),
-            size: output_buffer_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
         });
 
         let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -264,11 +251,24 @@ impl DataBuffers {
             view_formats: &[],
         });
 
-        let buffers = DataBuffers {
-            output_buffer_size,
-            accumulation_buffer_size,
+        let output_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Compute Output Texture"),
+            size: wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm, // storage formats cannot be *-srgb
+            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
+        });
+
+        let buffers: DataBuffers = DataBuffers {
+            output_texture,
             ray_buffer,
-            output_buffer,
             params_buffer,
             camera_buffer,
             material_buffer,
@@ -328,10 +328,10 @@ impl DataBuffers {
                 wgpu::BindGroupLayoutEntry {
                     binding: pixel_colors_bind,
                     visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::WriteOnly,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        view_dimension: wgpu::TextureViewDimension::D2,
                     },
                     count: None,
                 },
@@ -434,7 +434,12 @@ impl DataBuffers {
             entries: &[
                 bind_group_entry!(params_bind, self.params_buffer),
                 bind_group_entry!(ray_directions_bind, self.ray_buffer),
-                bind_group_entry!(pixel_colors_bind, self.output_buffer),
+                wgpu::BindGroupEntry {
+                    binding: pixel_colors_bind,
+                    resource: wgpu::BindingResource::TextureView(
+                        &self.output_texture_storage_view(),
+                    ),
+                },
                 bind_group_entry!(camera_bind, self.camera_buffer),
                 bind_group_entry!(material_bind, self.material_buffer),
                 bind_group_entry!(sphere_bind, self.sphere_buffer),
@@ -581,5 +586,43 @@ impl DataBuffers {
             0,
             bytemuck::cast_slice(new_materials),
         );
+    }
+
+    pub fn recreate_output_texture(
+        &mut self,
+        device: &wgpu::Device,
+        size: &winit::dpi::PhysicalSize<u32>,
+    ) -> BindGroup {
+        self.output_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Compute Output Texture"),
+            size: wgpu::Extent3d {
+                width: size.width.max(1),
+                height: size.height.max(1),
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
+        });
+
+        let (_layout, bind_group) = self.create_compute_bindgroup(device);
+        bind_group
+    }
+
+    pub fn output_texture_view(&self) -> wgpu::TextureView {
+        self.output_texture
+            .create_view(&wgpu::TextureViewDescriptor {
+                label: Some("Output Texture sRGB View"),
+                format: Some(wgpu::TextureFormat::Rgba8UnormSrgb),
+                ..Default::default()
+            })
+    }
+
+    pub fn output_texture_storage_view(&self) -> wgpu::TextureView {
+        self.output_texture
+            .create_view(&wgpu::TextureViewDescriptor::default())
     }
 }

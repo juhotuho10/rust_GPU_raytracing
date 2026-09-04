@@ -19,8 +19,8 @@ use egui::{Color32, DragValue, Frame, FullOutput, pos2};
 
 use wgpu::{
     Adapter, Backends, BindGroup, BlendState, Device, Dx12Compiler, Gles3MinorVersion, Instance,
-    InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages, include_wgsl,
+    InstanceDescriptor, InstanceFlags, PipelineLayout, Queue, Surface, TextureFormat,
+    TextureUsages, include_wgsl,
 };
 
 use winit::{
@@ -42,6 +42,8 @@ pub const OBJECT_COUNT: u64 = 34;
 
 pub const SPHERE_COUNT: u64 = 3;
 pub const MATERIAL_COUNT: u64 = 19;
+
+const SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
 pub fn main() {
     let event_loop = EventLoop::new().expect("failed to make eventloop");
@@ -130,6 +132,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     // Create uniform buffer
     let params = Params {
         screen_width: size.width,
+        screen_height: size.height,
         accumulation_index: 1,
         accumulate: 1,
         sphere_count: scene.spheres.len() as u32,
@@ -140,10 +143,9 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         textue_count: scene.image_textures.len() as u32,
         env_map_width: scene.env_map_size[0],
         env_map_height: scene.env_map_size[1],
-        _padding: [0; 4],
     };
 
-    let (mut scene_renderer, compute_bindgroup_layout, compute_bind_group) =
+    let (mut scene_renderer, compute_bindgroup_layout, mut compute_bind_group) =
         Renderer::new(camera, scene, &device, &queue, size, params);
 
     // ################################ GPU COMPUTE PIPELINE #########################################
@@ -178,12 +180,10 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     // #####################################################################################
     // ################################ RENDER PIPELINE #########################################
 
-    let mut texture = create_texture(&device, size);
-
     let sampler: wgpu::Sampler = generate_sampler(&device);
 
     let (mut bind_group_layout, mut bind_group) =
-        create_device_bindgroup(&device, &texture, &sampler);
+        create_device_bindgroup(&device, &scene_renderer.output_texture_view(), &sampler);
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
@@ -191,17 +191,17 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         push_constant_ranges: &[],
     });
 
-    let render_pipeline = create_render_pipeline(&device, &pipeline_layout, texture.format());
+    let render_pipeline = create_render_pipeline(&device, &pipeline_layout, SURFACE_FORMAT);
 
     let mut surface_config = wgpu::SurfaceConfiguration {
         usage: TextureUsages::RENDER_ATTACHMENT,
-        format: texture.format(),
+        format: SURFACE_FORMAT,
         width: size.width,
         height: size.height,
         present_mode: wgpu::PresentMode::Immediate,
         desired_maximum_frame_latency: 2,
         alpha_mode: wgpu::CompositeAlphaMode::Auto,
-        view_formats: vec![texture.format()],
+        view_formats: vec![SURFACE_FORMAT],
     };
 
     surface.configure(&device, &surface_config);
@@ -271,12 +271,13 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                 (size.height as f32 / 2.).round(),
                             );
 
-                            scene_renderer.on_resize(&size);
+                            compute_bind_group = scene_renderer.on_resize(&size);
 
-                            texture = create_texture(&device, size);
-
-                            (bind_group_layout, bind_group) =
-                                create_device_bindgroup(&device, &texture, &sampler);
+                            (bind_group_layout, bind_group) = create_device_bindgroup(
+                                &device,
+                                &scene_renderer.output_texture_view(),
+                                &sampler,
+                            );
 
                             surface.configure(&device, &surface_config);
 
@@ -386,8 +387,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                                         label: Some("Encoder"),
                                     },
                                 );
-
-                                scene_renderer.update_texture(&mut encoder, &texture);
 
                                 // #############################################################################################
 
@@ -501,33 +500,11 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     drop(queue);
 }
 
-fn create_texture(device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) -> wgpu::Texture {
-    let texture_size = wgpu::Extent3d {
-        width: size.width.max(1),
-        height: size.height.max(1),
-        depth_or_array_layers: 1,
-    };
-
-    device.create_texture(&TextureDescriptor {
-        label: None,
-        size: texture_size,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: TextureDimension::D2,
-        format: TextureFormat::Rgba8UnormSrgb,
-        usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-
-        view_formats: &[],
-    })
-}
-
 fn create_device_bindgroup(
     device: &wgpu::Device,
-    texture: &wgpu::Texture,
+    texture_view: &wgpu::TextureView,
     sampler: &wgpu::Sampler,
 ) -> (wgpu::BindGroupLayout, BindGroup) {
-    let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
     let texture_bind = 0;
     let sampler_bind = 1;
 
@@ -558,7 +535,7 @@ fn create_device_bindgroup(
         entries: &[
             wgpu::BindGroupEntry {
                 binding: texture_bind,
-                resource: wgpu::BindingResource::TextureView(&texture_view),
+                resource: wgpu::BindingResource::TextureView(texture_view),
             },
             wgpu::BindGroupEntry {
                 binding: sampler_bind,

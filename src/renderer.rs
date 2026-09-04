@@ -12,7 +12,7 @@ use super::buffers;
 
 use egui::Context;
 
-use wgpu::{BindGroup, BindGroupLayout, CommandEncoder, Device, Queue, Texture};
+use wgpu::{BindGroup, BindGroupLayout, Device, Queue};
 
 #[derive(Debug, Clone)]
 pub struct RenderScene {
@@ -100,10 +100,10 @@ impl Renderer<'_> {
         (renderer, bind_group_layout, compute_bind_group)
     }
 
-    pub fn on_resize(&mut self, size: &winit::dpi::PhysicalSize<u32>) {
+    pub fn on_resize(&mut self, size: &winit::dpi::PhysicalSize<u32>) -> BindGroup {
         self.camera.on_resize(size.width, size.height);
-
-        self.reset_accumulation()
+        self.reset_accumulation();
+        self.buffers.recreate_output_texture(self.device, size)
     }
 
     pub fn on_update(&mut self, mouse_delta: egui::Vec2, egui_context: &Context) {
@@ -133,6 +133,7 @@ impl Renderer<'_> {
 
         let params = Params {
             screen_width: self.camera.viewport_width,
+            screen_height: self.camera.viewport_height,
             accumulation_index: self.accumulation_index,
             accumulate: self.accumulate as u32,
             sphere_count: self.scene.spheres.len() as u32,
@@ -143,7 +144,6 @@ impl Renderer<'_> {
             textue_count: self.scene.image_textures.len() as u32,
             env_map_width: self.scene.env_map_size[0],
             env_map_height: self.scene.env_map_size[1],
-            _padding: [0; 4],
         };
 
         self.buffers
@@ -216,6 +216,7 @@ impl Renderer<'_> {
         if self.accumulate {
             let params = Params {
                 screen_width: width,
+                screen_height: height,
                 accumulation_index: self.accumulation_index,
                 accumulate: self.accumulate as u32,
                 sphere_count: self.scene.spheres.len() as u32,
@@ -226,7 +227,6 @@ impl Renderer<'_> {
                 textue_count: self.scene.image_textures.len() as u32,
                 env_map_width: self.scene.env_map_size[0],
                 env_map_height: self.scene.env_map_size[1],
-                _padding: [0; 4],
             };
 
             self.buffers.update_accumulation(self.queue, &[params]);
@@ -247,51 +247,10 @@ impl Renderer<'_> {
         }
 
         self.queue.submit(Some(compute_encoder.finish()));
-
-        // ###################################### copying buffers to texture ########################################
     }
 
-    pub fn update_texture(&mut self, encoder: &mut CommandEncoder, texture: &Texture) {
-        // ###################################### update accumulation ########################################
-        let width = self.camera.viewport_width;
-        let height = self.camera.viewport_height;
-
-        let bytes_per_row = self.calculate_bytes_per_row(width);
-
-        // Copy the GPU output buffer to the texture to be displayed
-        encoder.copy_buffer_to_texture(
-            wgpu::ImageCopyBuffer {
-                buffer: &self.buffers.output_buffer,
-                layout: wgpu::ImageDataLayout {
-                    offset: 0,
-                    bytes_per_row: Some(bytes_per_row), // 4 bytes per pixel
-                    rows_per_image: Some(height),
-                },
-            },
-            wgpu::ImageCopyTexture {
-                texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-        );
-    }
-
-    pub fn calculate_bytes_per_row(&self, width: u32) -> u32 {
-        // the gpu buffer has to be 256 * n bytes per row
-
-        let bytes_per_pixel = 4; // RGBA8Unorm = 4 bytes per pixel
-
-        let value = width * bytes_per_pixel;
-        let alignment = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-
-        // bytes per row
-        (value + alignment - 1) & !(alignment - 1)
+    pub fn output_texture_view(&self) -> wgpu::TextureView {
+        self.buffers.output_texture_view()
     }
 }
 
