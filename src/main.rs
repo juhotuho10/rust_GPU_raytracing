@@ -80,7 +80,6 @@ struct Gpu {
     compute_pipeline: wgpu::ComputePipeline,
     compute_bind_group: BindGroup,
     sampler: wgpu::Sampler,
-    bind_group_layout: wgpu::BindGroupLayout,
     bind_group: BindGroup,
     render_pipeline: wgpu::RenderPipeline,
     surface_config: wgpu::SurfaceConfiguration,
@@ -90,7 +89,6 @@ struct Gpu {
 struct EguiState {
     winit: egui_winit::State,
     renderer: egui_wgpu::Renderer,
-    screen_descriptor: ScreenDescriptor,
 }
 
 // ##########################################################################################################################
@@ -177,9 +175,9 @@ impl App {
         Self {
             gpu: None,
             movement_mode: false,
-            mouse_resting_position: egui::pos2(0.0, 0.0),
-            mouse_delta: egui::vec2(0.0, 0.0),
-            last_mouse_pos: egui::pos2(0.0, 0.0),
+            mouse_resting_position: egui::Pos2::ZERO,
+            mouse_delta: egui::Vec2::ZERO,
+            last_mouse_pos: egui::Pos2::ZERO,
             show_ui: true,
             compute_counter: 0,
             compute_per_second: 0,
@@ -220,37 +218,33 @@ impl App {
             } => match state {
                 ElementState::Pressed => {
                     let grabbed = window.set_cursor_grab(CursorGrabMode::Confined);
-
-                    let possible_pos = gpu
+                    let hover_pos = gpu
                         .egui
                         .winit
                         .egui_ctx()
                         .input(|i: &egui::InputState| i.pointer.hover_pos());
 
-                    match (grabbed, possible_pos) {
+                    match (grabbed, hover_pos) {
                         (Ok(_), Some(pos)) => {
                             self.movement_mode = true;
                             window.set_cursor_visible(false);
                             self.last_mouse_pos = pos;
-                            self.mouse_delta = egui::vec2(0.0, 0.0);
+                            self.mouse_delta = egui::Vec2::ZERO;
                         }
-                        (Err(error), _) => println!("cound not grab the cursor, {}", error),
-                        (_, _) => println!("could not find cursor position"),
+                        (Err(error), _) => println!("could not grab the cursor, {}", error),
+                        (_, None) => println!("could not find cursor position"),
                     }
                 }
                 ElementState::Released => {
-                    let grab_release = window.set_cursor_grab(CursorGrabMode::None);
+                    if let Err(error) = window.set_cursor_grab(CursorGrabMode::None) {
+                        println!("could not release cursor, {}", error);
+                    }
                     window.set_cursor_visible(true);
-
-                    let pos_set = window.set_cursor_position(PhysicalPosition::new(
+                    let _ = window.set_cursor_position(PhysicalPosition::new(
                         self.last_mouse_pos.x as u32,
                         self.last_mouse_pos.y as u32,
                     ));
-
-                    match (grab_release, pos_set) {
-                        (Ok(_), _) => self.movement_mode = false,
-                        (Err(error), _) => println!("could not release cursor, {}", error),
-                    }
+                    self.movement_mode = false;
                 }
             },
 
@@ -320,8 +314,8 @@ impl App {
             .tessellate(full_output.shapes, full_output.pixels_per_point);
 
         let screen = ScreenDescriptor {
-            size_in_pixels: gpu.egui.screen_descriptor.size_in_pixels,
-            pixels_per_point: gpu.egui.screen_descriptor.pixels_per_point,
+            size_in_pixels: [gpu.surface_config.width, gpu.surface_config.height],
+            pixels_per_point: gpu.window.scale_factor() as f32,
         };
 
         // Upload egui font/image textures before they are used in the render pass.
@@ -461,12 +455,16 @@ impl Gpu {
 
         // ################################ GPU COMPUTE PIPELINE #########################################
 
-        let compute_shader_code = include_str!("compute_shader.wgsl")
-            .replace("TRIANGLE_COUNT_PLACEHOLDER", &TRIANGLE_COUNT.to_string())
-            .replace("SUBOBJECT_COUNT_PLACEHOLDER", &SUBOBJECT_COUNT.to_string())
-            .replace("OBJECT_COUNT_PLACEHOLDER", &OBJECT_COUNT.to_string())
-            .replace("SPHERE_COUNT_PLACEHOLDER", &SPHERE_COUNT.to_string())
-            .replace("MATERIAL_COUNT_PLACEHOLDER", &MATERIAL_COUNT.to_string());
+        let mut compute_shader_code = include_str!("compute_shader.wgsl").to_string();
+        for (placeholder, count) in [
+            ("TRIANGLE_COUNT_PLACEHOLDER", TRIANGLE_COUNT),
+            ("SUBOBJECT_COUNT_PLACEHOLDER", SUBOBJECT_COUNT),
+            ("OBJECT_COUNT_PLACEHOLDER", OBJECT_COUNT),
+            ("SPHERE_COUNT_PLACEHOLDER", SPHERE_COUNT),
+            ("MATERIAL_COUNT_PLACEHOLDER", MATERIAL_COUNT),
+        ] {
+            compute_shader_code = compute_shader_code.replace(placeholder, &count.to_string());
+        }
 
         let compute_module = renderer
             .device
@@ -544,10 +542,6 @@ impl Gpu {
                 surface_config.format,
                 egui_wgpu::RendererOptions::default(),
             ),
-            screen_descriptor: ScreenDescriptor {
-                size_in_pixels: [size.width, size.height],
-                pixels_per_point: window.scale_factor() as f32,
-            },
         };
 
         Self {
@@ -557,7 +551,6 @@ impl Gpu {
             compute_pipeline,
             compute_bind_group,
             sampler,
-            bind_group_layout,
             bind_group,
             render_pipeline,
             surface_config,
@@ -569,17 +562,14 @@ impl Gpu {
         self.surface_config.width = size.width;
         self.surface_config.height = size.height;
 
-        self.egui.screen_descriptor.size_in_pixels = [size.width, size.height];
-        self.egui.screen_descriptor.pixels_per_point = self.window.scale_factor() as f32;
-
         self.compute_bind_group = self.renderer.on_resize(&size);
 
-        let (bind_group_layout, bind_group) = create_device_bindgroup(
+        let (_, bind_group) = create_device_bindgroup(
             &self.renderer.device,
             &self.renderer.output_texture_view(),
             &self.sampler,
         );
-        self.bind_group_layout = bind_group_layout;
+
         self.bind_group = bind_group;
 
         self.surface
@@ -642,8 +632,6 @@ fn setup_renderpass(
     bind_group: &BindGroup,
 ) -> wgpu::RenderPass<'static> {
     let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        label: None,
-        multiview_mask: None,
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
             view,
             resolve_target: None,
@@ -653,9 +641,7 @@ fn setup_renderpass(
                 store: wgpu::StoreOp::Store,
             },
         })],
-        depth_stencil_attachment: None,
-        timestamp_writes: None,
-        occlusion_query_set: None,
+        ..Default::default()
     });
     rpass.set_pipeline(render_pipeline);
     rpass.set_bind_group(0, bind_group, &[]);
@@ -670,34 +656,31 @@ fn create_render_pipeline(
 ) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(include_wgsl!("render_shader.wgsl"));
 
-    let render_pipeline: wgpu::RenderPipeline =
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: None,
-            layout: Some(pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: swapchain_format,
-                    blend: Some(BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
-
-    render_pipeline
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: None,
+        layout: Some(pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            buffers: &[],
+            compilation_options: Default::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_main"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: swapchain_format,
+                blend: Some(BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+        cache: None,
+    })
 }
 
 async fn create_adapter(instance: &wgpu::Instance, surface: &Surface<'_>) -> wgpu::Adapter {
@@ -759,7 +742,7 @@ macro_rules! create_drag_value {
     }};
 }
 
-fn create_ui(ui: &mut egui::Ui, screne_renderer: &mut Renderer, compute_per_second: &u32) {
+fn create_ui(ui: &mut egui::Ui, renderer: &mut Renderer, compute_per_second: &u32) {
     ui.visuals_mut().override_text_color = Some(Color32::from_rgb(200, 200, 200));
 
     let transparent_frame = Frame::new().fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200));
@@ -772,216 +755,177 @@ fn create_ui(ui: &mut egui::Ui, screne_renderer: &mut Renderer, compute_per_seco
         .show(ui, |ui| {
             ui.set_max_width(180.0);
 
-            ui.label(format!("fps: {}", compute_per_second));
+            ui.label(format!("samples/s: {}", compute_per_second));
 
             ui.vertical_centered(|ui| {
-                let sky_color = &mut screne_renderer.scene.environment_map.color;
+                let sky_color = &mut renderer.scene.environment_map.color;
                 if let Some(sky_color) = sky_color {
                     ui.label("sky color:");
-                    if ui
+                    interacted |= ui
                         .color_edit_button_rgb(sky_color)
                         .on_hover_text("color")
-                        .changed()
-                    {
-                        interacted = true;
-                    };
+                        .changed();
                 }
 
-                if ui
-                    .checkbox(&mut screne_renderer.accumulate, "light accumulation")
-                    .changed()
-                {
-                    interacted = true;
-                };
+                interacted |= ui
+                    .checkbox(&mut renderer.accumulate, "light accumulation")
+                    .changed();
 
                 ui.add_space(10.0);
 
-                ui.vertical_centered_justified(|ui: &mut egui::Ui| {
-                    ui.label("selected object:");
-                    ui.add(
-                        egui::Slider::new(
-                            &mut screne_renderer.object_index,
-                            0..=(screne_renderer.scene.objects.len() - 1),
-                        )
-                        .integer(),
-                    );
+                ui.label("selected object:");
+                ui.add(
+                    egui::Slider::new(
+                        &mut renderer.object_index,
+                        0..=(renderer.scene.objects.len() - 1),
+                    )
+                    .integer(),
+                );
 
-                    let current_object =
-                        &mut screne_renderer.scene.objects[screne_renderer.object_index];
+                let current_object = &mut renderer.scene.objects[renderer.object_index];
+                let coordinates = &mut current_object.transformation;
 
-                    let coordinates = &mut current_object.transformation;
-
-                    ui.label("location:");
-                    ui.horizontal(|ui| {
-                        if create_drag_value!(ui, &mut coordinates[0], 0.1, -400.0..=400.0, "X: ") {
-                            interacted = true;
-                        }
-
-                        if create_drag_value!(ui, &mut coordinates[1], 0.1, -400.0..=10.0, "Y: ") {
-                            interacted = true;
-                        }
-
-                        if create_drag_value!(ui, &mut coordinates[2], 0.1, -400.0..=400.0, "Z: ") {
-                            interacted = true;
-                        }
-                    });
-
-                    ui.add_space(10.0);
-
-                    let rotation = &mut current_object.rotation;
-
-                    ui.label("rotation:");
-                    ui.horizontal(|ui| {
-                        if create_drag_value!(ui, &mut rotation[0], 1.0, -180.0..=180.0, "X: ") {
-                            interacted = true;
-                        }
-
-                        if create_drag_value!(ui, &mut rotation[1], 1.0, -180.0..=180.0, "Y: ") {
-                            interacted = true;
-                        }
-
-                        if create_drag_value!(ui, &mut rotation[2], 1.0, -180.0..=180.0, "Z: ") {
-                            interacted = true;
-                        }
-                    });
-
-                    // sliders for scale
-                    ui.vertical_centered_justified(|ui: &mut egui::Ui| {
-                        let object_size = &mut current_object.scale;
-
-                        if create_drag_value!(ui, object_size, 0.01, 0.1..=100.0, "scale: ") {
-                            interacted = true;
-                        }
-                    });
-
-                    ui.vertical_centered_justified(|ui: &mut egui::Ui| {
-                        if ui.button("return to surface").clicked() {
-                            current_object.set_model_to_surface();
-                            interacted = true;
-                        }
-                    });
-
-                    ui.vertical_centered_justified(|ui: &mut egui::Ui| {
-                        if ui.button("reset rotation").clicked() {
-                            current_object.reset_rotation();
-                            interacted = true;
-                        }
-                    });
-
-                    let material_index: usize = current_object.material_index as usize;
-                    ui_material_selection(screne_renderer, material_index, ui, &mut interacted);
+                ui.label("location:");
+                ui.horizontal(|ui| {
+                    interacted |=
+                        create_drag_value!(ui, &mut coordinates[0], 0.1, -400.0..=400.0, "X: ");
+                    interacted |=
+                        create_drag_value!(ui, &mut coordinates[1], 0.1, -400.0..=10.0, "Y: ");
+                    interacted |=
+                        create_drag_value!(ui, &mut coordinates[2], 0.1, -400.0..=400.0, "Z: ");
                 });
+
+                ui.add_space(10.0);
+
+                let rotation = &mut current_object.rotation;
+
+                ui.label("rotation:");
+                ui.horizontal(|ui| {
+                    interacted |=
+                        create_drag_value!(ui, &mut rotation[0], 1.0, -180.0..=180.0, "X: ");
+                    interacted |=
+                        create_drag_value!(ui, &mut rotation[1], 1.0, -180.0..=180.0, "Y: ");
+                    interacted |=
+                        create_drag_value!(ui, &mut rotation[2], 1.0, -180.0..=180.0, "Z: ");
+                });
+
+                // sliders for scale
+                let object_size = &mut current_object.scale;
+                interacted |= create_drag_value!(ui, object_size, 0.01, 0.1..=100.0, "scale: ");
+
+                if ui.button("return to surface").clicked() {
+                    current_object.set_model_to_surface();
+                    interacted = true;
+                }
+
+                if ui.button("reset rotation").clicked() {
+                    current_object.reset_rotation();
+                    interacted = true;
+                }
+
+                let material_index = current_object.material_index as usize;
+                interacted |= ui_material_selection(renderer, material_index, ui);
 
                 ui.add_space(30.0);
 
                 ui.label("selected sphere:");
                 ui.add(
                     egui::Slider::new(
-                        &mut screne_renderer.sphere_index,
-                        0..=(screne_renderer.scene.spheres.len() - 1),
+                        &mut renderer.sphere_index,
+                        0..=(renderer.scene.spheres.len() - 1),
                     )
                     .integer(),
                 );
 
-                let index = screne_renderer.sphere_index;
-                let current_sphere = &mut screne_renderer.scene.spheres[index];
+                let index = renderer.sphere_index;
+                let current_sphere = &mut renderer.scene.spheres[index];
 
                 // X Y Z sliders
-
                 let sphere_position = &mut current_sphere.position;
-
                 ui.horizontal(|ui| {
-                    if create_drag_value!(ui, &mut sphere_position[0], 0.1, -400.0..=400.0, "X: ") {
-                        interacted = true;
-                    }
-
-                    if create_drag_value!(ui, &mut sphere_position[1], 0.1, -400.0..=10.0, "Y: ") {
-                        interacted = true;
-                    }
-
-                    if create_drag_value!(ui, &mut sphere_position[2], 0.1, -400.0..=400.0, "Z: ") {
-                        interacted = true;
-                    }
+                    interacted |=
+                        create_drag_value!(ui, &mut sphere_position[0], 0.1, -400.0..=400.0, "X: ");
+                    interacted |=
+                        create_drag_value!(ui, &mut sphere_position[1], 0.1, -400.0..=10.0, "Y: ");
+                    interacted |=
+                        create_drag_value!(ui, &mut sphere_position[2], 0.1, -400.0..=400.0, "Z: ");
                 });
 
                 // sliders for radius
-                ui.vertical_centered_justified(|ui: &mut egui::Ui| {
-                    let sphere_radius = &mut current_sphere.radius;
+                let sphere_radius = &mut current_sphere.radius;
+                interacted |= create_drag_value!(ui, sphere_radius, 0.01, 0.1..=50.0, "radius: ");
 
-                    if create_drag_value!(ui, sphere_radius, 0.01, 0.1..=50.0, "radius: ") {
-                        interacted = true;
-                    }
-                });
-
-                let material_index: usize = current_sphere.material_index as usize;
-                ui_material_selection(screne_renderer, material_index, ui, &mut interacted);
+                let material_index = current_sphere.material_index as usize;
+                interacted |= ui_material_selection(renderer, material_index, ui);
             });
         });
 
     if interacted {
-        screne_renderer.update_scene()
+        renderer.update_scene()
     }
 }
 
 fn ui_material_selection(
-    screne_renderer: &mut Renderer,
+    renderer: &mut Renderer,
     material_index: usize,
     ui: &mut egui::Ui,
-    interacted: &mut bool,
-) {
-    ui.vertical_centered_justified(|ui: &mut egui::Ui| {
-        ui.label("object material: ");
-        let current_material = &mut screne_renderer.scene.materials[material_index];
+) -> bool {
+    let mut interacted = false;
 
-        let texture_index = current_material.texture_index;
+    ui.label("object material: ");
+    let current_material = &mut renderer.scene.materials[material_index];
 
-        let current_image = &mut screne_renderer.scene.image_textures[texture_index as usize];
+    let texture_index = current_material.texture_index;
+    let current_image = &mut renderer.scene.image_textures[texture_index as usize];
 
-        let emission_power = &mut current_material.emission_power;
+    if let Some(color) = &mut current_image.color {
+        interacted |= ui
+            .color_edit_button_rgb(color)
+            .on_hover_text("color")
+            .changed();
+    }
 
-        let color = &mut current_image.color;
+    interacted |= create_drag_value!(
+        ui,
+        &mut current_material.emission_power,
+        0.2,
+        0.0..=200.0,
+        "emission power: "
+    );
 
-        if let Some(color) = color
-            && ui
-                .color_edit_button_rgb(color)
-                .on_hover_text("color")
-                .changed()
-        {
-            *interacted = true;
-        };
+    interacted |= create_drag_value!(
+        ui,
+        &mut current_material.roughness,
+        0.01,
+        0.0..=1.0,
+        "roughness: "
+    );
 
-        if create_drag_value!(ui, emission_power, 0.2, 0.0..=200.0, "emission power: ") {
-            *interacted = true;
-        }
+    interacted |= create_drag_value!(
+        ui,
+        &mut current_material.specular,
+        0.01,
+        0.0..=1.0,
+        "specular: "
+    );
 
-        let material_roughness = &mut current_material.roughness;
+    interacted |= create_drag_value!(
+        ui,
+        &mut current_material.specular_scatter,
+        0.01,
+        0.0..=0.5,
+        "specular scatter: "
+    );
 
-        if create_drag_value!(ui, material_roughness, 0.01, 0.0..=1.0, "roughness: ") {
-            *interacted = true;
-        }
+    interacted |= create_drag_value!(ui, &mut current_material.glass, 0.01, 0.0..=1.0, "glass: ");
 
-        let material_specular = &mut current_material.specular;
+    interacted |= create_drag_value!(
+        ui,
+        &mut current_material.refraction_index,
+        0.01,
+        0.0..=5.0,
+        "refraction index: "
+    );
 
-        if create_drag_value!(ui, material_specular, 0.01, 0.0..=1.0, "specular: ") {
-            *interacted = true;
-        }
-
-        let specular_scatter = &mut current_material.specular_scatter;
-
-        if create_drag_value!(ui, specular_scatter, 0.01, 0.0..=0.5, "specular scatter: ") {
-            *interacted = true;
-        }
-
-        let glass_refraction = &mut current_material.glass;
-
-        if create_drag_value!(ui, glass_refraction, 0.01, 0.0..=1.0, "glass: ") {
-            *interacted = true;
-        }
-
-        let refraction_index = &mut current_material.refraction_index;
-
-        if create_drag_value!(ui, refraction_index, 0.01, 0.0..=5.0, "refraction index: ") {
-            *interacted = true;
-        }
-    });
+    interacted
 }
