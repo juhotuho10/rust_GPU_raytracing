@@ -153,29 +153,25 @@ impl Camera {
         let up_hat = right_hat.cross(forward);
 
         let tan_half_fov = (self.vertical_fov * 0.5).to_radians().tan();
-        let aspect_ratio = self.viewport_width as f32 / self.viewport_height as f32;
-
-        // dir = forward + ndc_x * right + ndc_y * up
-        let right = right_hat * (aspect_ratio * tan_half_fov);
-        let up = up_hat * tan_half_fov;
+        let step = 2.0 * tan_half_fov / self.viewport_height as f32;
 
         let width = self.viewport_width as usize;
         let height = self.viewport_height as usize;
         let mut new_ray_directions: Vec<Ray> = vec![Ray::zeroed(); width * height];
 
-        let x_step = 2.0 / self.viewport_width as f32;
-        let y_step = 2.0 / self.viewport_height as f32;
+        let right_step = right_hat * step;
+        let up_step = up_hat * step;
+        let origin =
+            forward - (right_step * (width as f32 * 0.5) + up_step * (height as f32 * 0.5));
 
         new_ray_directions
             .par_chunks_mut(width)
             .enumerate()
             .for_each(|(y, row)| {
-                let ndc_y = y as f32 * y_step - 1.0;
-                let row_base = forward + ndc_y * up;
+                let row_base = origin + y as f32 * up_step;
 
                 for (x, ray) in row.iter_mut().enumerate() {
-                    let ndc_x = x as f32 * x_step - 1.0;
-                    let dir = row_base + ndc_x * right;
+                    let dir = row_base + x as f32 * right_step;
 
                     *ray = Ray {
                         direction: dir.normalize_or_zero().into(),
