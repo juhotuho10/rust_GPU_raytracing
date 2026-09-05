@@ -493,7 +493,7 @@ impl Gpu {
             format: SURFACE_FORMAT,
             width: size.width,
             height: size.height,
-            present_mode: wgpu::PresentMode::Immediate,
+            present_mode: wgpu::PresentMode::FifoRelaxed,
             desired_maximum_frame_latency: 2,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             color_space: wgpu::SurfaceColorSpace::Auto,
