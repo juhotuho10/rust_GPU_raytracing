@@ -1,12 +1,13 @@
 use super::buffers::Ray;
+use bytemuck::Zeroable;
 use egui::Context;
 use glam::{
-    Mat4, Quat, Vec3A, Vec4,
+    Mat4, Quat, Vec3A,
     camera::rh::{proj, view},
-    vec2, vec3a, vec4,
+    vec3a,
 };
-use rayon::prelude::*;
 
+use rayon::prelude::*;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Camera {
     pub position: Vec3A,
@@ -141,50 +142,50 @@ impl Camera {
     }
 
     pub fn recalculate_ray_directions(&self) -> Vec<Ray> {
-        // multithreadded implementation
+        let forward = self.direction.normalize_or_zero();
 
+        let right_hat = forward.cross(glam::Vec3A::Y);
+        let right_hat = if right_hat.length_squared() > 1e-8 {
+            right_hat.normalize()
+        } else {
+            forward.any_orthogonal_vector()
+        };
+        let up_hat = right_hat.cross(forward);
+
+        let tan_half_fov = (self.vertical_fov * 0.5).to_radians().tan();
         let aspect_ratio = self.viewport_width as f32 / self.viewport_height as f32;
 
-        // Create new ray directions in parallel
-        let new_ray_directions: Vec<Ray> = (0..self.viewport_height)
-            .into_par_iter()
-            .flat_map(|y| {
-                let y_coord: f32 = y as f32 / self.viewport_height as f32;
-                (0..self.viewport_width)
-                    .map(|x| {
-                        let x_coord = x as f32 / self.viewport_width as f32;
+        // dir = forward + ndc_x * right + ndc_y * up
+        let right = right_hat * (aspect_ratio * tan_half_fov);
+        let up = up_hat * tan_half_fov;
 
-                        // normalized between -1 and 1
-                        let normalized_coord = vec2(x_coord, y_coord) * 2.0 - 1.0;
+        let width = self.viewport_width as usize;
+        let height = self.viewport_height as usize;
+        let mut new_ray_directions: Vec<Ray> = vec![Ray::zeroed(); width * height];
 
-                        // rescale for aspect ratio
-                        let adjusted_coord =
-                            vec2(normalized_coord.x * aspect_ratio, normalized_coord.y);
+        let x_step = 2.0 / self.viewport_width as f32;
+        let y_step = 2.0 / self.viewport_height as f32;
 
-                        let target: Vec4 = self.inverse_projection
-                            * vec4(adjusted_coord.x, adjusted_coord.y, 1.0, 1.0);
+        new_ray_directions
+            .par_chunks_mut(width)
+            .enumerate()
+            .for_each(|(y, row)| {
+                let ndc_y = y as f32 * y_step - 1.0;
+                let row_base = forward + ndc_y * up;
 
-                        let target_vec3: Vec3A = target.truncate().into();
+                for (x, ray) in row.iter_mut().enumerate() {
+                    let ndc_x = x as f32 * x_step - 1.0;
+                    let dir = row_base + ndc_x * right;
 
-                        let world_space_target: Vec4 =
-                            (target_vec3 / target.w).normalize().extend(0.0);
-
-                        let ray_direction: Vec3A =
-                            (self.inverse_view * world_space_target).truncate().into();
-
-                        // caching the ray directions so we dont need to calculate them every frame
-                        Ray {
-                            direction: ray_direction.into(),
-                            _padding: [0; 4],
-                        }
-                    })
-                    .collect::<Vec<Ray>>()
-            })
-            .collect();
+                    *ray = Ray {
+                        direction: dir.normalize_or_zero().into(),
+                        _padding: [0; 4],
+                    };
+                }
+            });
 
         new_ray_directions
     }
-
     pub fn on_resize(&mut self, width: u32, height: u32) {
         if width == self.viewport_width && height == self.viewport_height {
             return;
