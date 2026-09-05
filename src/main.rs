@@ -409,9 +409,6 @@ impl Gpu {
             .map(|obj: &SceneObject| obj.sub_object_info.len())
             .sum();
 
-        println!(
-            "the following numbers should be the same in the compute shader for the buffer sizes"
-        );
         dbg!(triangle_count);
         dbg!(sub_object_count);
         dbg!(scene.objects.len());
