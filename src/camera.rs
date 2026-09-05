@@ -174,7 +174,7 @@ impl Camera {
                     let dir = row_base + x as f32 * right_step;
 
                     *ray = Ray {
-                        direction: dir.normalize_or_zero().into(),
+                        direction: dir.normalize().into(),
                         _padding: [0; 4],
                     };
                 }
