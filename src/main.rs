@@ -14,7 +14,7 @@ use renderer::Renderer;
 use define_scene::define_render_scene;
 use triangle_object::SceneObject;
 
-use egui::{Color32, DragValue, Frame};
+use egui::{Color32, DragValue, Frame, Stroke};
 
 use wgpu::{
     Adapter, BindGroup, BlendState, Device, InstanceDescriptor, PipelineLayout, Queue, Surface,
@@ -703,17 +703,43 @@ fn generate_sampler(device: &wgpu::Device) -> wgpu::Sampler {
 
 // ######################### UI CREATION ########################################
 
+const UI_MAX_WIDTH: f32 = 160.0;
+
 // simple macro for making the UI more compact
 macro_rules! create_drag_value {
     ($ui:expr, $value:expr, $speed:expr, $range:expr, $prefix:expr) => {{
-        $ui.add(
-            DragValue::new($value)
-                .speed($speed)
-                .range($range)
-                .prefix($prefix),
-        )
-        .changed()
+        let dv = DragValue::new($value)
+            .speed($speed)
+            .range($range)
+            .prefix($prefix);
+        let saved = $ui.style().visuals.clone();
+        let v = $ui.visuals_mut();
+        v.widgets.inactive.bg_stroke = Stroke::new(1.0, Color32::from_rgb(60, 63, 78));
+        let width = $ui.available_width().min(UI_MAX_WIDTH);
+        let changed = $ui.add_sized([width, 18.0], dv).changed();
+        $ui.visuals_mut().widgets = saved.widgets;
+        changed
     }};
+}
+
+fn action_button(ui: &mut egui::Ui, label: &str) -> bool {
+    let saved = ui.style().visuals.widgets.clone();
+    let v = ui.visuals_mut();
+    v.widgets.inactive.weak_bg_fill = Color32::from_rgb(70, 92, 145);
+    v.widgets.hovered.weak_bg_fill = Color32::from_rgb(95, 122, 185);
+    v.widgets.active.weak_bg_fill = Color32::from_rgb(52, 68, 110);
+    v.widgets.inactive.fg_stroke = Stroke::new(1.0, Color32::from_rgb(235, 238, 250));
+    let width = UI_MAX_WIDTH / 2.0;
+    let clicked = ui
+        .add(
+            egui::Button::new(egui::RichText::new(label).strong())
+                .min_size([width, 22.0].into())
+                .corner_radius(6),
+        )
+        .clicked();
+    ui.visuals_mut().widgets = saved;
+    ui.add_space(2.0);
+    clicked
 }
 
 fn create_ui(ui: &mut egui::Ui, renderer: &mut Renderer, compute_per_second: &u32) {
@@ -727,7 +753,7 @@ fn create_ui(ui: &mut egui::Ui, renderer: &mut Renderer, compute_per_second: &u3
         .resizable(false)
         .frame(transparent_frame)
         .show(ui, |ui| {
-            ui.set_max_width(180.0);
+            ui.set_max_width(UI_MAX_WIDTH);
 
             ui.label(format!("samples/s: {}", compute_per_second));
 
@@ -760,7 +786,7 @@ fn create_ui(ui: &mut egui::Ui, renderer: &mut Renderer, compute_per_second: &u3
                 let coordinates = &mut current_object.transformation;
 
                 ui.label("location:");
-                ui.horizontal(|ui| {
+                ui.vertical(|ui| {
                     interacted |=
                         create_drag_value!(ui, &mut coordinates[0], 0.1, -400.0..=400.0, "X: ");
                     interacted |=
@@ -774,7 +800,7 @@ fn create_ui(ui: &mut egui::Ui, renderer: &mut Renderer, compute_per_second: &u3
                 let rotation = &mut current_object.rotation;
 
                 ui.label("rotation:");
-                ui.horizontal(|ui| {
+                ui.vertical(|ui| {
                     interacted |=
                         create_drag_value!(ui, &mut rotation[0], 1.0, -180.0..=180.0, "X: ");
                     interacted |=
@@ -787,12 +813,12 @@ fn create_ui(ui: &mut egui::Ui, renderer: &mut Renderer, compute_per_second: &u3
                 let object_size = &mut current_object.scale;
                 interacted |= create_drag_value!(ui, object_size, 0.01, 0.1..=100.0, "scale: ");
 
-                if ui.button("return to surface").clicked() {
+                if action_button(ui, "return to surface") {
                     current_object.set_model_to_surface();
                     interacted = true;
                 }
 
-                if ui.button("reset rotation").clicked() {
+                if action_button(ui, "reset rotation") {
                     current_object.reset_rotation();
                     interacted = true;
                 }
@@ -816,7 +842,7 @@ fn create_ui(ui: &mut egui::Ui, renderer: &mut Renderer, compute_per_second: &u3
 
                 // X Y Z sliders
                 let sphere_position = &mut current_sphere.position;
-                ui.horizontal(|ui| {
+                ui.vertical(|ui| {
                     interacted |=
                         create_drag_value!(ui, &mut sphere_position[0], 0.1, -400.0..=400.0, "X: ");
                     interacted |=
