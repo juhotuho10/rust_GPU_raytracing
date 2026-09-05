@@ -17,8 +17,8 @@ use triangle_object::SceneObject;
 use egui::{Color32, DragValue, Frame, Stroke};
 
 use wgpu::{
-    Adapter, BindGroup, BlendState, Device, InstanceDescriptor, PipelineLayout, Queue,
-    ShaderRuntimeChecks, Surface, TextureFormat, TextureUsages, include_wgsl,
+    Adapter, BindGroup, BlendState, Device, PipelineLayout, Queue, ShaderRuntimeChecks, Surface,
+    TextureFormat, TextureUsages, include_wgsl,
 };
 
 use winit::{
@@ -197,7 +197,7 @@ impl App {
                 // Exit the application
                 gpu.renderer
                     .device
-                    .poll(wgpu::PollType::wait_indefinitely())
+                    .poll(wgpu::PollType::Wait)
                     .expect("device poll failed");
                 target.exit();
             }
@@ -276,7 +276,7 @@ impl App {
                     label: Some("Encoder"),
                 });
 
-        let wgpu::CurrentSurfaceTexture::Success(frame) = gpu.surface.get_current_texture() else {
+        let Ok(frame) = gpu.surface.get_current_texture() else {
             // failed to get the frame, returning without a render
             return;
         };
@@ -290,8 +290,8 @@ impl App {
         }
 
         let raw_input = gpu.egui.winit.take_egui_input(gpu.window.as_ref());
-        let mut full_output = gpu.egui.winit.egui_ctx().run_ui(raw_input, |ui| {
-            create_ui(ui, &mut gpu.renderer, &self.compute_per_second)
+        let mut full_output = gpu.egui.winit.egui_ctx().run(raw_input, |ctx| {
+            create_ui(ctx, &mut gpu.renderer, &self.compute_per_second)
         });
         gpu.egui.winit.handle_platform_output(
             gpu.window.as_ref(),
@@ -315,7 +315,7 @@ impl App {
                 &gpu.renderer.device,
                 &gpu.renderer.queue,
                 *id,
-                &image_delta[0],
+                image_delta,
             );
         }
 
@@ -339,7 +339,7 @@ impl App {
         }
 
         gpu.renderer.queue.submit(Some(encoder.finish()));
-        gpu.renderer.queue.present(frame);
+        frame.present();
 
         for id in &full_output.textures_delta.free {
             gpu.egui.renderer.free_texture(id);
@@ -367,10 +367,9 @@ impl App {
 
 impl Gpu {
     fn new(target: &ActiveEventLoop) -> Self {
-        let mut descriptor =
-            InstanceDescriptor::new_with_display_handle(Box::new(target.owned_display_handle()));
+        let mut descriptor = wgpu::InstanceDescriptor::from_env_or_default();
         descriptor.backends = wgpu::Backends::VULKAN;
-        let instance = wgpu::Instance::new(descriptor.with_env());
+        let instance = wgpu::Instance::new(&descriptor);
 
         // window width is set at 1600, because GPU buffer requires n * 256 bytes (n * 64 pixels * 4*u8 colors ) for every horisontal row,
         // changing it to not be a multiple of 64 requires implementing buffer values when getting colors from the GPU
@@ -452,8 +451,8 @@ impl Gpu {
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Compute Pipeline Layout"),
-                    bind_group_layouts: &[Some(&compute_bindgroup_layout)],
-                    immediate_size: 0,
+                    bind_group_layouts: &[&compute_bindgroup_layout],
+                    push_constant_ranges: &[],
                 });
 
         let compute_pipeline =
@@ -481,8 +480,8 @@ impl Gpu {
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: None,
-                    bind_group_layouts: &[Some(&bind_group_layout)],
-                    immediate_size: 0,
+                    bind_group_layouts: &[&bind_group_layout],
+                    push_constant_ranges: &[],
                 });
 
         let render_pipeline =
@@ -496,7 +495,6 @@ impl Gpu {
             present_mode: wgpu::PresentMode::FifoRelaxed,
             desired_maximum_frame_latency: 2,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
-            color_space: wgpu::SurfaceColorSpace::Auto,
             view_formats: vec![SURFACE_FORMAT],
         };
 
@@ -514,7 +512,9 @@ impl Gpu {
             renderer: egui_wgpu::Renderer::new(
                 &renderer.device,
                 surface_config.format,
-                egui_wgpu::RendererOptions::default(),
+                None,
+                1,
+                false,
             ),
         };
 
@@ -609,7 +609,6 @@ fn setup_renderpass(
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
             view,
             resolve_target: None,
-            depth_slice: None,
             ops: wgpu::Operations {
                 load: wgpu::LoadOp::Load,
                 store: wgpu::StoreOp::Store,
@@ -652,8 +651,8 @@ fn create_render_pipeline(
         primitive: wgpu::PrimitiveState::default(),
         depth_stencil: None,
         multisample: wgpu::MultisampleState::default(),
-        multiview_mask: None,
         cache: None,
+        multiview: None,
     })
 }
 
@@ -664,7 +663,6 @@ async fn create_adapter(instance: &wgpu::Instance, surface: &Surface<'_>) -> wgp
             force_fallback_adapter: false,
             // Request an adapter which can render to our surface
             compatible_surface: Some(surface),
-            apply_limit_buckets: false,
         })
         .await
         .expect("Failed to find an appropriate adapter")
@@ -683,7 +681,6 @@ async fn generate_device_and_queue(adapter: &Adapter) -> (Device, Queue) {
             required_limits: adapter_limits,
             memory_hints: wgpu::MemoryHints::Performance,
             trace: wgpu::Trace::Off,
-            experimental_features: wgpu::ExperimentalFeatures::disabled(),
         })
         .await
         .expect("Failed to create device")
@@ -696,7 +693,7 @@ fn generate_sampler(device: &wgpu::Device) -> wgpu::Sampler {
         address_mode_w: wgpu::AddressMode::ClampToEdge,
         mag_filter: wgpu::FilterMode::Linear,
         min_filter: wgpu::FilterMode::Linear,
-        mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+        mipmap_filter: wgpu::FilterMode::Nearest,
         ..Default::default()
     })
 }
@@ -714,7 +711,7 @@ macro_rules! create_drag_value {
             .prefix($prefix);
         let saved = $ui.style().visuals.clone();
         let v = $ui.visuals_mut();
-        v.widgets.inactive.bg_stroke = Stroke::new(1.0, Color32::from_rgb(60, 63, 78));
+        v.widgets.inactive.bg_stroke = Stroke::new(1.0f32, Color32::from_rgb(60, 63, 78));
         let width = $ui.available_width().min(UI_MAX_WIDTH);
         let changed = $ui.add_sized([width, 18.0], dv).changed();
         $ui.visuals_mut().widgets = saved.widgets;
@@ -728,7 +725,7 @@ fn action_button(ui: &mut egui::Ui, label: &str) -> bool {
     v.widgets.inactive.weak_bg_fill = Color32::from_rgb(70, 92, 145);
     v.widgets.hovered.weak_bg_fill = Color32::from_rgb(95, 122, 185);
     v.widgets.active.weak_bg_fill = Color32::from_rgb(52, 68, 110);
-    v.widgets.inactive.fg_stroke = Stroke::new(1.0, Color32::from_rgb(235, 238, 250));
+    v.widgets.inactive.fg_stroke = Stroke::new(1.0f32, Color32::from_rgb(235, 238, 250));
     let width = UI_MAX_WIDTH / 2.0;
     let clicked = ui
         .add(
@@ -742,17 +739,19 @@ fn action_button(ui: &mut egui::Ui, label: &str) -> bool {
     clicked
 }
 
-fn create_ui(ui: &mut egui::Ui, renderer: &mut Renderer, compute_per_second: &u32) {
-    ui.visuals_mut().override_text_color = Some(Color32::from_rgb(200, 200, 200));
+fn create_ui(ctx: &egui::Context, renderer: &mut Renderer, compute_per_second: &u32) {
+    ctx.style_mut(|style| {
+        style.visuals.override_text_color = Some(Color32::from_rgb(200, 200, 200));
+    });
 
     let transparent_frame = Frame::new().fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200));
 
     let mut interacted = false;
 
-    egui::Panel::right("side_panel")
+    egui::SidePanel::right("side_panel")
         .resizable(false)
         .frame(transparent_frame)
-        .show(ui, |ui| {
+        .show(ctx, |ui| {
             ui.set_max_width(UI_MAX_WIDTH);
 
             ui.label(format!("samples/s: {}", compute_per_second));
