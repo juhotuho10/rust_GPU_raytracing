@@ -14,8 +14,8 @@ pub struct ObjectCreation {
 }
 
 pub fn load_stl_files(object_data_vec: &[ObjectCreation]) -> Vec<SceneObject> {
-    let mut triangle_count = 0;
     let mut sub_object_count = 0;
+    let mut _triangle_count = 0;
     let mut scene_object_vec = vec![];
 
     for obj_data in object_data_vec {
@@ -27,8 +27,8 @@ pub fn load_stl_files(object_data_vec: &[ObjectCreation]) -> Vec<SceneObject> {
             obj_data.material_index,
         );
 
-        (sub_object_count, triangle_count) =
-            new_obj.create_sub_objects(sub_object_count, triangle_count);
+        (sub_object_count, _triangle_count) =
+            new_obj.create_sub_objects(sub_object_count, _triangle_count);
 
         scene_object_vec.push(new_obj);
     }
@@ -47,7 +47,7 @@ pub struct SceneObject {
     pub object_info: ObjectInfo,
     pub sub_object_info: Vec<SubObjectInfo>,
     pub object_triangles: Vec<SceneTriangle>,
-    n_sub_object_triangels: usize,
+    n_sub_object_triangles: usize,
 }
 
 impl SceneObject {
@@ -58,46 +58,34 @@ impl SceneObject {
         rotation: Vec3A,
         material_index: u32,
     ) -> SceneObject {
-        // Open the STL file
-        let file = File::open(filepath).expect("could not open STL file from path");
-        let mut reader = BufReader::new(file);
-
         assert!(scale > 0.0, "scale has to be over 0.0");
 
-        // Read the STL file
-        let stl_file = stl_io::read_stl(&mut reader).expect("Failed to read STL file");
+        let file = File::open(filepath).expect("could not open STL file from path");
+        let stl_file =
+            stl_io::read_stl(&mut BufReader::new(file)).expect("Failed to read STL file");
 
-        // into vector of vec3a
         let original_points: Vec<Vec3A> = stl_file
             .vertices
             .iter()
-            .map(|&vertex| vec3a(vertex[0], vertex[1], vertex[2]))
+            .map(|&v| vec3a(v[0], v[1], v[2]))
             .collect();
 
-        let points = normalize_model(original_points, rotation);
+        let scaled_points = normalize_model(original_points, rotation, scale);
 
-        let scaled_points = scale_model(points, scale);
+        let (min_coords, max_coords) = get_bounding_box(&scaled_points);
 
-        let (mut min_coords, mut max_coords) = get_bounding_box(&scaled_points);
+        // Lift the model so its lowest point sits at y = 0, then apply the world transform.
+        let surface_transformation = -max_coords * Vec3A::Y;
+        let total_transformation = surface_transformation + transformation;
 
-        let (surface_points, surface_transformation) =
-            transform_points_to_surface(scaled_points.clone(), max_coords);
+        let point_indexes: Vec<[usize; 3]> =
+            stl_file.faces.iter().map(|face| face.vertices).collect();
 
-        let transformed_points = transform_model(surface_points, transformation);
+        let transformed_points =
+            transform_points(&scaled_points, Mat3A::IDENTITY, 1.0, total_transformation);
 
-        min_coords += surface_transformation + transformation;
-        max_coords += surface_transformation + transformation;
-
-        let total_transformation = transformation + surface_transformation;
-
-        let point_indexes: Vec<[usize; 3]> = stl_file
-            .faces
-            .iter()
-            .map(|vertex| vertex.vertices)
-            .collect();
-
-        // Process the triangles
-        let triangles = generate_triangles(&point_indexes, &transformed_points);
+        let min_coords = min_coords + total_transformation;
+        let max_coords = max_coords + total_transformation;
 
         let object_info = ObjectInfo {
             min_bounds: min_coords.into(),
@@ -108,7 +96,7 @@ impl SceneObject {
             _padding: [0; 12],
         };
 
-        let center_location = (min_coords + max_coords) / 2.0;
+        let triangles = generate_triangles(&point_indexes, &transformed_points);
 
         SceneObject {
             normalized_points: scaled_points,
@@ -116,40 +104,34 @@ impl SceneObject {
             scale: 1.0,
             rotation: Vec3A::ZERO,
             transformation: total_transformation,
-            center_location,
+            center_location: (min_coords + max_coords) / 2.0,
             material_index,
             object_info,
             object_triangles: triangles,
             sub_object_info: vec![],
-            n_sub_object_triangels: 7,
+            n_sub_object_triangles: 7,
         }
     }
 
     pub fn update_triangles(&mut self) {
-        let rotated_points = rotate_to_angle(self.normalized_points.clone(), self.rotation);
-
-        let scaled_points: Vec<Vec3A> = scale_model(rotated_points, self.scale);
-
-        let transformed_points = transform_model(scaled_points, self.transformation);
+        let transformed_points = transform_points(
+            &self.normalized_points,
+            euler_rotation(self.rotation),
+            self.scale,
+            self.transformation,
+        );
 
         let (min_coords, max_coords) = get_bounding_box(&transformed_points);
 
         self.center_location = (min_coords + max_coords) / 2.0;
-
         self.object_info.min_bounds = min_coords.into();
         self.object_info.max_bounds = max_coords.into();
 
-        let triangles: Vec<SceneTriangle> =
-            generate_triangles(&self.point_indexes, &transformed_points);
-
-        self.object_triangles = triangles;
+        self.object_triangles = generate_triangles(&self.point_indexes, &transformed_points);
     }
 
     pub fn set_model_to_surface(&mut self) {
-        let transformation: Vec3A = self.object_info.max_bounds.into();
-        let y_transform = transformation * Vec3A::Y;
-
-        self.transformation -= y_transform;
+        self.transformation -= Vec3A::from(self.object_info.max_bounds) * Vec3A::Y;
     }
 
     pub fn reset_rotation(&mut self) {
@@ -161,179 +143,125 @@ impl SceneObject {
         starting_sub_object_index: u32,
         starting_triangle_index: u32,
     ) -> (u32, u32) {
-        let mut sub_objects: Vec<SubObjectInfo> = vec![];
+        let mut triangle_index = starting_triangle_index;
 
-        let mut triangle_counter = 0;
+        self.sub_object_info = self
+            .object_triangles
+            .chunks(self.n_sub_object_triangles)
+            .map(|chunk| {
+                let (min_bounds, max_bounds) = chunk_bounds(chunk);
 
-        for subvec in self.object_triangles.chunks(self.n_sub_object_triangels) {
-            let all_bounds = triangle_bounds(subvec);
-            let (min_bounds, max_bounds) = get_bounding_box(&all_bounds);
+                let sub_object = SubObjectInfo {
+                    min_bounds: min_bounds.into(),
+                    first_triangle_index: triangle_index,
+                    max_bounds: max_bounds.into(),
+                    triangle_count: chunk.len() as u32,
+                };
 
-            let new_sub_object = SubObjectInfo {
-                min_bounds: min_bounds.into(),
-                first_triangle_index: starting_triangle_index + triangle_counter,
-                max_bounds: max_bounds.into(),
-                triangle_count: subvec.len() as u32,
-            };
-
-            triangle_counter += subvec.len() as u32;
-
-            sub_objects.push(new_sub_object);
-        }
+                triangle_index += chunk.len() as u32;
+                sub_object
+            })
+            .collect();
 
         self.object_info.first_sub_object_index = starting_sub_object_index;
-        self.object_info.sub_object_count = sub_objects.len() as u32;
-        self.sub_object_info = sub_objects;
+        self.object_info.sub_object_count = self.sub_object_info.len() as u32;
 
-        let ending_sub_object_index = starting_sub_object_index + self.object_info.sub_object_count;
-        let ending_triangles_index = starting_triangle_index + self.object_triangles.len() as u32;
-
-        (ending_sub_object_index, ending_triangles_index)
+        (
+            starting_sub_object_index + self.object_info.sub_object_count,
+            triangle_index,
+        )
     }
 
     pub fn update_sub_objects(&mut self) {
-        for (i, subvec) in self
-            .object_triangles
-            .chunks(self.n_sub_object_triangels)
-            .enumerate()
-        {
-            let all_bounds: Vec<Vec3A> = triangle_bounds(subvec);
-
-            let (min_bounds, max_bounds) = get_bounding_box(&all_bounds);
-
-            let current_sub_obj = &mut self.sub_object_info[i];
-
-            current_sub_obj.min_bounds = min_bounds.into();
-            current_sub_obj.max_bounds = max_bounds.into();
+        for (sub_object, (min_bounds, max_bounds)) in self.sub_object_info.iter_mut().zip(
+            self.object_triangles
+                .chunks(self.n_sub_object_triangles)
+                .map(chunk_bounds),
+        ) {
+            sub_object.min_bounds = min_bounds.into();
+            sub_object.max_bounds = max_bounds.into();
         }
     }
 }
 
-fn triangle_bounds(triangles: &[SceneTriangle]) -> Vec<Vec3A> {
-    triangles
+fn transform_points(
+    points: &[Vec3A],
+    rotation: Mat3A,
+    scale: f32,
+    translation: Vec3A,
+) -> Vec<Vec3A> {
+    // applies rotation, then uniform scale, then translation
+    points
         .iter()
-        .flat_map(|x| {
-            let a = Vec3A::from_array(x.a);
-            let b = Vec3A::from_array(x.edge_ab) + a;
-            let c = Vec3A::from_array(x.edge_ac) + a;
-
-            let min_bounds = a.min(b).min(c);
-            let max_bounds = a.max(b).max(c);
-
-            vec![min_bounds, max_bounds]
-        })
+        .map(|&point| rotation * point * scale + translation)
         .collect()
+}
+
+fn euler_rotation(rotation: Vec3A) -> Mat3A {
+    fn deg_to_rad(deg: f32) -> f32 {
+        deg * (PI / 180.0)
+    }
+
+    Mat3A::from_rotation_z(deg_to_rad(rotation.z))
+        * Mat3A::from_rotation_y(deg_to_rad(rotation.y))
+        * Mat3A::from_rotation_x(deg_to_rad(rotation.x))
+}
+
+fn normalize_model(points: Vec<Vec3A>, rotation: Vec3A, scale: f32) -> Vec<Vec3A> {
+    // normalizes a model to fit in a 1 sized unit box
+    let rotated = transform_points(&points, euler_rotation(rotation), 1.0, Vec3A::ZERO);
+
+    let (min_coords, max_coords) = get_bounding_box(&rotated);
+
+    let scale = scale / min_coords.distance(max_coords);
+    let offset = (min_coords + max_coords) * 0.5 * scale;
+
+    rotated
+        .iter()
+        .map(|&point| point * scale - offset)
+        .collect()
+}
+
+fn chunk_bounds(chunk: &[SceneTriangle]) -> (Vec3A, Vec3A) {
+    let mut min = vec3a(f32::MAX, f32::MAX, f32::MAX);
+    let mut max = vec3a(f32::MIN, f32::MIN, f32::MIN);
+
+    for triangle in chunk {
+        let a = Vec3A::from_array(triangle.a);
+        let b = a + Vec3A::from_array(triangle.edge_ab);
+        let c = a + Vec3A::from_array(triangle.edge_ac);
+
+        min = min.min(a).min(b).min(c);
+        max = max.max(a).max(b).max(c);
+    }
+
+    (min, max)
 }
 
 fn generate_triangles(
     point_indexes: &[[usize; 3]],
     transformed_points: &[Vec3A],
 ) -> Vec<SceneTriangle> {
-    let triangles: Vec<SceneTriangle> = point_indexes
+    point_indexes
         .iter()
-        .map(|indexes| {
+        .map(|&[a, b, c]| {
             SceneTriangle::new(
-                transformed_points[indexes[0]],
-                transformed_points[indexes[1]],
-                transformed_points[indexes[2]],
+                transformed_points[a],
+                transformed_points[b],
+                transformed_points[c],
             )
         })
-        .collect();
-    triangles
+        .collect()
 }
 
-fn normalize_model(mut points: Vec<Vec3A>, rotation_matrix: Vec3A) -> Vec<Vec3A> {
-    points = rotate_to_angle(points, rotation_matrix);
+fn get_bounding_box(points: &[Vec3A]) -> (Vec3A, Vec3A) {
+    let mut min = vec3a(f32::MAX, f32::MAX, f32::MAX);
+    let mut max = vec3a(f32::MIN, f32::MIN, f32::MIN);
 
-    let (min_coords, max_coords) = get_bounding_box(&points);
-
-    let average = (min_coords + max_coords) / 2.0;
-
-    let scale: f32 = 1.0 / min_coords.distance(max_coords);
-    let transformation = average * scale;
-
-    points
-        .iter()
-        .map(|&point| point * scale - transformation)
-        .collect::<Vec<_>>()
-}
-
-fn rotate_to_angle(points: Vec<Vec3A>, rotation: Vec3A) -> Vec<Vec3A> {
-    fn deg_to_rad(deg: f32) -> f32 {
-        deg * (PI / 180.0)
+    for &point in points {
+        min = min.min(point);
+        max = max.max(point);
     }
 
-    let x_rad = deg_to_rad(rotation.x);
-    let y_rad = deg_to_rad(rotation.y);
-    let z_rad = deg_to_rad(rotation.z);
-
-    let rotation_x = Mat3A::from_rotation_x(x_rad);
-    let rotation_y = Mat3A::from_rotation_y(y_rad);
-    let rotation_z = Mat3A::from_rotation_z(z_rad);
-
-    let rotation = rotation_z * rotation_y * rotation_x;
-
-    apply_rotation_matrix(points, rotation)
-}
-
-fn apply_rotation_matrix(points: Vec<Vec3A>, rotation: Mat3A) -> Vec<Vec3A> {
-    points
-        .iter()
-        .map(|&point| rotation * point)
-        .collect::<Vec<_>>()
-}
-
-fn scale_model(points: Vec<Vec3A>, scale: f32) -> Vec<Vec3A> {
-    points
-        .iter()
-        .map(|&point| point * scale)
-        .collect::<Vec<_>>()
-}
-
-fn transform_model(points: Vec<Vec3A>, transformation: Vec3A) -> Vec<Vec3A> {
-    points
-        .iter()
-        .map(|&point| point + transformation)
-        .collect::<Vec<_>>()
-}
-
-fn get_bounding_box(points: &Vec<Vec3A>) -> (Vec3A, Vec3A) {
-    let (mut min_x, mut min_y, mut min_z) = (f32::MAX, f32::MAX, f32::MAX);
-    let (mut max_x, mut max_y, mut max_z) = (f32::MIN, f32::MIN, f32::MIN);
-
-    // Iterate through each coordinate array in the vector
-    for &vec in points {
-        if vec.x < min_x {
-            min_x = vec.x;
-        }
-        if vec.x > max_x {
-            max_x = vec.x;
-        }
-
-        if vec.y < min_y {
-            min_y = vec.y;
-        }
-        if vec.y > max_y {
-            max_y = vec.y;
-        }
-
-        if vec.z < min_z {
-            min_z = vec.z;
-        }
-        if vec.z > max_z {
-            max_z = vec.z;
-        }
-    }
-
-    (vec3a(min_x, min_y, min_z), vec3a(max_x, max_y, max_z))
-}
-
-fn transform_points_to_surface(mut points: Vec<Vec3A>, max_coords: Vec3A) -> (Vec<Vec3A>, Vec3A) {
-    let transformation: Vec3A = -max_coords * Vec3A::Y;
-
-    points = points
-        .iter()
-        .map(|&point| point + transformation)
-        .collect::<Vec<_>>();
-    (points, transformation)
+    (min, max)
 }
