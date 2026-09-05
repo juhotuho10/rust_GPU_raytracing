@@ -89,10 +89,6 @@ struct SceneTriangle {
     _padding2: u32,
     edge_ac: vec3<f32>,
     _padding3: u32,
-    calc_normal: vec3<f32>,
-    _padding4: u32,
-    face_normal: vec3<f32>,
-    _padding5: u32,
     // explicit padding to match 16 byte alignment 
 }
 
@@ -408,6 +404,7 @@ fn check_triangles(ray: Ray, t_max: f32) -> HitPayload{
     var closest_triangle_index: u32 = 0u;
     var closest_front_face: bool = false;
     var found_hit: bool = false;
+    var closes_calc_normal = vec3<f32>(0.0);
 
     for (var object_index: u32 = 0; object_index < params.object_count; object_index = object_index + 1) {
         let object_info: ObjectInfo = object_array[object_index];
@@ -430,15 +427,16 @@ fn check_triangles(ray: Ray, t_max: f32) -> HitPayload{
             for (var j: u32 = 0; j < sub_object_info.triangle_count; j = j + 1) {
                 let triangle_index = sub_object_info.first_triangle_index + j;
                 let tri: SceneTriangle = triangle_array[triangle_index];
+                let tri_calc_normal = cross(tri.edge_ab, tri.edge_ac);
                 
-                let determinant: f32 = -dot(ray.direction, tri.calc_normal);
+                let determinant: f32 = -dot(ray.direction, tri_calc_normal);
 
 
                 let inv_det: f32 = 1 / determinant;
                 
                 let ao: vec3<f32> = ray.origin - tri.a; 
 
-                let distance: f32 = dot(ao, tri.calc_normal) * inv_det;
+                let distance: f32 = dot(ao, tri_calc_normal) * inv_det;
 
                 if distance < 0.0 || distance >= closest_distance {
                     continue;
@@ -470,6 +468,7 @@ fn check_triangles(ray: Ray, t_max: f32) -> HitPayload{
                 closest_object_index = object_index;
                 closest_triangle_index = triangle_index;
                 closest_front_face = determinant > 0.0;
+                closes_calc_normal = tri_calc_normal;
                 found_hit = true;
     
             };
@@ -486,9 +485,9 @@ fn check_triangles(ray: Ray, t_max: f32) -> HitPayload{
     let hitpoint = ray.origin + ray.direction * closest_distance;
     let texture_coords = object_texture_coords(hitpoint, object_info.min_bounds, object_info.max_bounds);
 
-    var hitside_normal: vec3<f32> = tri.face_normal;
+    var hitside_normal: vec3<f32> = normalize(closes_calc_normal);
     if !closest_front_face {
-        hitside_normal = -tri.face_normal;
+        hitside_normal = -hitside_normal;
     }
 
     return HitPayload(

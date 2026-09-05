@@ -53,10 +53,6 @@ pub struct SceneTriangle {
     _padding2: [u8; 4],    // padding to ensure 16-byte alignment
     pub edge_ac: [f32; 3], // vec3, aligned to 12 bytes
     _padding3: [u8; 4],    // padding to ensure 16-byte alignment
-    calc_normal: [f32; 3], // vec3, aligned to 12 bytes
-    _padding4: [u8; 4],    // padding to ensure 16-byte alignment
-    face_normal: [f32; 3], // vec3, aligned to 12 bytes
-    _padding5: [u8; 4],    // padding to ensure 16-byte alignment
 }
 
 impl SceneTriangle {
@@ -66,20 +62,13 @@ impl SceneTriangle {
         let edge_ab = b - a;
         let edge_ac = c - a;
 
-        let calc_normal = edge_ab.cross(edge_ac);
-        let face_normal = calc_normal.normalize();
-
         SceneTriangle {
-            a: a.into(),                     // vec3, aligned to 12 bytes
-            _padding: [0; 4],                // padding to ensure 16-byte alignment
-            edge_ab: edge_ab.into(),         // vec3, aligned to 12 bytes
-            _padding2: [0; 4],               // padding to ensure 16-byte alignment
-            edge_ac: edge_ac.into(),         // vec3, aligned to 12 bytes
-            _padding3: [0; 4],               // padding to ensure 16-byte alignment
-            calc_normal: calc_normal.into(), // vec3, aligned to 12 bytes
-            _padding4: [0; 4],               // padding to ensure 16-byte alignment
-            face_normal: face_normal.into(), // vec3, aligned to 12 bytes
-            _padding5: [0; 4],               // padding to ensure 16-byte alignment
+            a: a.into(),             // vec3, aligned to 12 bytes
+            _padding: [0; 4],        // padding to ensure 16-byte alignment
+            edge_ab: edge_ab.into(), // vec3, aligned to 12 bytes
+            _padding2: [0; 4],       // padding to ensure 16-byte alignment
+            edge_ac: edge_ac.into(), // vec3, aligned to 12 bytes
+            _padding3: [0; 4],       // padding to ensure 16-byte alignment
         }
     }
 }
