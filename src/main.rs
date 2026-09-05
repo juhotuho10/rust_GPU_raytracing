@@ -183,7 +183,6 @@ impl App {
         let Some(gpu) = self.gpu.as_mut() else {
             return;
         };
-        let window = gpu.window.clone();
 
         match event {
             WindowEvent::Resized(new_size) => {
@@ -209,7 +208,7 @@ impl App {
                 ..
             } => match state {
                 ElementState::Pressed => {
-                    let grabbed = window.set_cursor_grab(CursorGrabMode::Confined);
+                    let grabbed = gpu.window.set_cursor_grab(CursorGrabMode::Confined);
                     let hover_pos = gpu
                         .egui
                         .winit
@@ -219,7 +218,7 @@ impl App {
                     match (grabbed, hover_pos) {
                         (Ok(_), Some(pos)) => {
                             self.movement_mode = true;
-                            window.set_cursor_visible(false);
+                            gpu.window.set_cursor_visible(false);
                             self.last_mouse_pos = pos;
                             self.mouse_delta = egui::Vec2::ZERO;
                         }
@@ -228,11 +227,11 @@ impl App {
                     }
                 }
                 ElementState::Released => {
-                    if let Err(error) = window.set_cursor_grab(CursorGrabMode::None) {
+                    if let Err(error) = gpu.window.set_cursor_grab(CursorGrabMode::None) {
                         println!("could not release cursor, {}", error);
                     }
-                    window.set_cursor_visible(true);
-                    let _ = window.set_cursor_position(PhysicalPosition::new(
+                    gpu.window.set_cursor_visible(true);
+                    let _ = gpu.window.set_cursor_position(PhysicalPosition::new(
                         self.last_mouse_pos.x as u32,
                         self.last_mouse_pos.y as u32,
                     ));
