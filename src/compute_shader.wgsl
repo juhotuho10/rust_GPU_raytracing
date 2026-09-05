@@ -2,6 +2,10 @@ const F32_MAX: f32 = 3.4028235e+38;
 const U32_MAX: u32 = 4294967295u;
 const PI: f32 = 3.1415926536;
 
+const INV_U32_MAX: f32  = 1.0 / f32(U32_MAX);
+
+const BOUNCES: u32 = 10u;
+
 
 @group(0) @binding(0) var<storage, read> params: Params;
 @group(0) @binding(1) var<storage, read> camera_rays: array<vec3<f32>>;
@@ -125,6 +129,7 @@ struct Ray {
     origin: vec3<f32>,
     direction: vec3<f32>,
     inv_direction: vec3<f32>,
+    origin_inv: vec3<f32>,
 }
 
 
@@ -139,8 +144,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let index: u32 =  (global_id.y * params.width) + global_id.x;
 
-    let bounces: u32 = 10u;
-
     var render_color = vec4<f32>(0.0);
 
     var random_index = params.accumulation_index;
@@ -150,7 +153,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if params.accumulate == 1{
 
         for (var i: u32 = 0u; i < params.compute_per_frame; i = i + 1) {
-            pixel_color += per_pixel(index, bounces, random_index);
+            pixel_color += per_pixel(index, random_index);
             random_index = random_index + 1;
         }
         accumulation_data[index] = pixel_color;
@@ -162,7 +165,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     }else{
 
-        let f32_color: vec4<f32> = per_pixel(index, bounces, random_index);
+        let f32_color: vec4<f32> = per_pixel(index, random_index);
         render_color = clamp(f32_color, vec4<f32>(0.0), vec4<f32>(1.0));
     }
     
@@ -178,18 +181,27 @@ fn random_unit_vector(seed: ptr<function, u32>) -> vec3<f32> {
     return vec3<f32>(r * cos(a), r * sin(a), z);
 }
 
+fn fast_cbrt(x: f32) -> f32 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    let y0: f32 = bitcast<f32>(bitcast<u32>(x) / 3u + 0x2A514067u);
+    return (2.0 * y0 + x / (y0 * y0)) * 0.33333333;
+}
+
 fn random_in_unit_sphere(seed: ptr<function, u32>) -> vec3<f32> {
     // uniform in the sphere's volume
-    return random_unit_vector(seed) * pow(random(seed), 1.0 / 3.0);
+    return random_unit_vector(seed) * fast_cbrt(random(seed));
 }
 
 
-fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
+fn per_pixel(index: u32, random_index: u32) -> vec4<f32> {
 
     var ray = Ray( 
         ray_camera.origin,
         camera_rays[index],
-        vec3<f32>(0.0)
+        vec3<f32>(0.0),
+        vec3<f32>(0.0),
     );
 
     var seed: u32 = pcg_hash(pcg_hash(index ^ (random_index * 0x9E3779B9u)));
@@ -202,8 +214,10 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
     let env_size = vec2<i32>(i32(params.env_map_width), i32(params.env_map_height));
     let texture_size = vec2<i32>(i32(params.texture_width), i32(params.texture_height));
 
-    for (var i: u32 = 0u; i < bounces; i = i + 1) {
-        ray.inv_direction = 1.0 / ray.direction; 
+    for (var i: u32 = 0u; i < BOUNCES; i = i + 1) {
+        ray.direction = normalize(ray.direction);
+        ray.inv_direction = 1.0 / ray.direction;
+        ray.origin_inv = ray.origin * ray.inv_direction;
 
         let hit_payload: HitPayload = trace_ray(ray);
 
@@ -231,7 +245,8 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
         let emitted_light = current_color * current_material.emission_power;
         light += emitted_light * light_contribution;
 
-        let is_glass: bool = current_material.glass > random(&seed);
+        // short-circuit: non-glass materials skip a pcg_hash entirely
+        let is_glass: bool = current_material.glass > 0.0 && current_material.glass > random(&seed);
 
         if is_glass{
 
@@ -247,9 +262,9 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
 
             let reflects: bool = refraction_index * sin_theta > 1.0;
 
-            let specular_percentage: f32 = specular_percentage(cos_theta, refraction_index);
+            let specular_pct: f32 = specular_percentage(cos_theta, refraction_index);
 
-            let is_specular: bool = (current_material.specular * specular_percentage) > random(&seed);
+            let is_specular: bool = (current_material.specular * specular_pct) > random(&seed);
 
             if reflects || is_specular {
                 // specular reflection, bounces off the glass
@@ -273,7 +288,7 @@ fn per_pixel(index: u32, bounces: u32, random_index: u32) -> vec4<f32> {
 
         }else{
 
-            let is_specular_bounce: bool = current_material.specular > random(&seed);
+            let is_specular_bounce: bool = current_material.specular > 0.0 && current_material.specular > random(&seed);
 
             if is_specular_bounce{
                 ray.direction = lerp(specular_direction, diffuse_direction, current_material.specular_scatter);
@@ -309,9 +324,11 @@ fn refract(ray_direction:vec3<f32>, hitside_normal: vec3<f32>, cos_theta: f32, r
 
 fn specular_percentage(cos_theta: f32, refraction_index: f32) -> f32{
     // Schlick's approximation for reflectance
-    var refraction_0 = (1 - refraction_index) / (1 + refraction_index);
+    var refraction_0 = (1.0 - refraction_index) / (1.0 + refraction_index);
     refraction_0 = refraction_0 * refraction_0;
-    return refraction_0 + (1-refraction_0) * pow((1.0 - cos_theta), 5.0);
+    let x: f32 = 1.0 - cos_theta;
+    let x2: f32 = x * x;
+    return refraction_0 + (1.0 - refraction_0) * (x2 * x2 * x);
 
 }
 
@@ -346,30 +363,31 @@ fn check_spheres(ray: Ray) -> HitPayload{
     var closest_distance = F32_MAX;
     var closest_sphere_index: i32 = -1;
 
-    let a: f32 = dot(ray.direction, ray.direction);
+    let dir: vec3<f32> = ray.direction;
+    let orig: vec3<f32> = ray.origin;
 
     // 4 used a a TEMPORARY sphere count, count should be passed in the params buffer
     let sphere_count: i32 = i32(params.sphere_count);
     for (var sphere_index: i32 = 0; sphere_index < sphere_count; sphere_index = sphere_index + 1) {
         let sphere: SceneSphere = sphere_array[sphere_index];
-        let origin: vec3<f32> = ray.origin - sphere.position;
+        let oc: vec3<f32> = orig - sphere.position;
 
-        let b: f32 = 2.0 * dot(ray.direction, origin);
-        let c: f32 = dot(origin, origin) - (sphere.radius * sphere.radius);
+        let b_half: f32 = dot(dir, oc);
+        let c: f32 = dot(oc, oc) - (sphere.radius * sphere.radius);
 
-        // discriminant:
-        // b^2 - 4*a*c
-        let discriminant: f32 = b * b - 4. * a * c;
+        if c > 0.0 && b_half > 0.0 {
+            // ray starts outside and the sphere is behind it
+            continue;
+        }
+
+        let discriminant: f32 = b_half * b_half - c;
 
         if discriminant < 0.0 {
             // we missed the sphere
             continue;
         }
 
-        // (-b +- discriminant) / 2a
-        //let t0 = (-b + sqrt(discriminant)) / (2. * a);
-
-        let current_t: f32 = (-b - sqrt(discriminant)) / (2. * a);
+        let current_t: f32 = -b_half - sqrt(discriminant);
         if (current_t > 0.0) && (current_t < closest_distance) {
             closest_distance = current_t;
             closest_sphere_index = sphere_index;
@@ -388,25 +406,25 @@ fn check_spheres(ray: Ray) -> HitPayload{
 
 fn ray_in_bounds(ray: Ray, min_bounds: vec3<f32>, max_bounds: vec3<f32>, t_max: f32) -> bool {
     // quick check to see if the ray falls within the object bounds
-    let min_t: vec3<f32> = (min_bounds - ray.origin) * ray.inv_direction;
-    let max_t: vec3<f32> = (max_bounds - ray.origin) * ray.inv_direction;
-    let t1: vec3<f32> = min(min_t, max_t);
-    let t2: vec3<f32> = max(min_t, max_t);
-    let near_t: f32 = max(max(t1.x, t1.y), t1.z);
-    let far_t: f32 = min(min(t2.x, t2.y), t2.z);
-    return near_t <= far_t && far_t >= 0.0 && near_t < t_max; 
+    let t0: vec3<f32> = min_bounds * ray.inv_direction - ray.origin_inv;
+    let t1: vec3<f32> = max_bounds * ray.inv_direction - ray.origin_inv;
+    let near_t: vec3<f32> = min(t0, t1);
+    let far_t: vec3<f32> = max(t0, t1);
+    let near: f32 = max(max(near_t.x, near_t.y), near_t.z);
+    let far: f32 = min(min(far_t.x, far_t.y), far_t.z);
+    return far >= 0.0 && near <= min(far, t_max);
 }
-
 fn check_triangles(ray: Ray, t_max: f32) -> HitPayload{
 
     var closest_distance = t_max;
     var closest_object_index: u32 = 0u;
-    var closest_triangle_index: u32 = 0u;
     var closest_front_face: bool = false;
     var found_hit: bool = false;
     var closes_calc_normal = vec3<f32>(0.0);
 
-    for (var object_index: u32 = 0; object_index < params.object_count; object_index = object_index + 1) {
+    let object_count: u32 = params.object_count;
+
+    for (var object_index: u32 = 0; object_index < object_count; object_index = object_index + 1) {
         let object_info: ObjectInfo = object_array[object_index];
 
         // quick way to filter out objects that can't be hit with ray
@@ -431,8 +449,7 @@ fn check_triangles(ray: Ray, t_max: f32) -> HitPayload{
                 
                 let determinant: f32 = -dot(ray.direction, tri_calc_normal);
 
-
-                let inv_det: f32 = 1 / determinant;
+                let inv_det: f32 = 1.0 / determinant;
                 
                 let ao: vec3<f32> = ray.origin - tri.a; 
 
@@ -451,7 +468,7 @@ fn check_triangles(ray: Ray, t_max: f32) -> HitPayload{
                 if v < 0.0 {
                     continue;
                 }
-                
+
                 let u: f32 = dot(tri.edge_ac, dao) * inv_det;
 
                 if u < 0.0 {
@@ -466,7 +483,6 @@ fn check_triangles(ray: Ray, t_max: f32) -> HitPayload{
 
                 closest_distance = distance;
                 closest_object_index = object_index;
-                closest_triangle_index = triangle_index;
                 closest_front_face = determinant > 0.0;
                 closes_calc_normal = tri_calc_normal;
                 found_hit = true;
@@ -479,7 +495,7 @@ fn check_triangles(ray: Ray, t_max: f32) -> HitPayload{
         return miss();
     }
 
-    let tri: SceneTriangle = triangle_array[closest_triangle_index];
+
     let object_info: ObjectInfo = object_array[closest_object_index];
 
     let hitpoint = ray.origin + ray.direction * closest_distance;
@@ -579,7 +595,7 @@ fn pcg_hash(value: u32) -> u32 {
 fn random(seed: ptr<function, u32>) -> f32 {
     // random float between 0 and 1 using pcg hash
     *seed = pcg_hash(*seed);
-    return f32(*seed) / f32(U32_MAX);
+    return f32(*seed) * INV_U32_MAX;
 }
 
 
@@ -592,6 +608,3 @@ fn random_scaler(seed: ptr<function, u32>) -> vec3<f32>{
 
     return scaler * 2.0 - 1.0;
 }
-
-
-
