@@ -17,8 +17,8 @@ use triangle_object::SceneObject;
 use egui::{Color32, DragValue, Frame, Stroke};
 
 use wgpu::{
-    Adapter, BindGroup, BlendState, Device, InstanceDescriptor, PipelineLayout, Queue, Surface,
-    TextureFormat, TextureUsages, include_wgsl,
+    Adapter, BindGroup, BlendState, Device, InstanceDescriptor, PipelineLayout, Queue,
+    ShaderRuntimeChecks, Surface, TextureFormat, TextureUsages, include_wgsl,
 };
 
 use winit::{
@@ -440,12 +440,15 @@ impl Gpu {
 
         // ################################ GPU COMPUTE PIPELINE #########################################
 
-        let compute_module = renderer
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("compute_shader.wgsl"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("compute_shader.wgsl").into()),
-            });
+        let compute_module = unsafe {
+            renderer.device.create_shader_module_trusted(
+                wgpu::ShaderModuleDescriptor {
+                    label: Some("compute_shader.wgsl"),
+                    source: wgpu::ShaderSource::Wgsl(include_str!("compute_shader.wgsl").into()),
+                },
+                ShaderRuntimeChecks::unchecked(),
+            )
+        };
 
         let compute_pipeline_layout =
             renderer
