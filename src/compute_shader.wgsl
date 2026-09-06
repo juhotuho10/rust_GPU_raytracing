@@ -137,38 +137,30 @@ struct Ray {
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
-    if global_id.x >= params.width || global_id.y >= params.height {
-        return;
-    }
-
-
     let index: u32 =  (global_id.y * params.width) + global_id.x;
-
-    var render_color = vec4<f32>(0.0);
 
     var random_index = params.accumulation_index;
 
     var pixel_color: vec4<f32> = accumulation_data[index];
 
-    if params.accumulate == 1{
+    let accumulating = params.accumulate == 1u; 
 
-        for (var i: u32 = 0u; i < params.compute_per_frame; i = i + 1) {
-            pixel_color += per_pixel(index, random_index);
-            random_index = random_index + 1;
-        }
-        accumulation_data[index] = pixel_color;
+    var iters = select(1u, params.compute_per_frame, accumulating);
+    
 
-        var accumulated_color: vec4<f32> = pixel_color / f32(params.accumulation_index * params.compute_per_frame);
-
-        render_color = clamp(accumulated_color, vec4<f32>(0.0), vec4<f32>(1.0));
-        
-
-    }else{
-
-        let f32_color: vec4<f32> = per_pixel(index, random_index);
-        render_color = clamp(f32_color, vec4<f32>(0.0), vec4<f32>(1.0));
+    for (var i: u32 = 0u; i < iters; i = i + 1) {
+        pixel_color += per_pixel(index, random_index);
+        random_index = random_index + 1;
     }
     
+    if accumulating {
+        accumulation_data[index] = pixel_color;
+    }
+
+    let divider: f32 = select(1.0, f32(params.accumulation_index * params.compute_per_frame), accumulating);
+
+    let render_color = min(pixel_color / divider, vec4<f32>(1.0));
+        
     textureStore(output_tex, vec2<i32>(global_id.xy), render_color);
 
 }
@@ -182,11 +174,8 @@ fn random_unit_vector(seed: ptr<function, u32>) -> vec3<f32> {
 }
 
 fn fast_cbrt(x: f32) -> f32 {
-    if x <= 0.0 {
-        return 0.0;
-    }
     let y0: f32 = bitcast<f32>(bitcast<u32>(x) / 3u + 0x2A514067u);
-    return (2.0 * y0 + x / (y0 * y0)) * 0.33333333;
+    return max(0.0, ((2.0 * y0 + x / (y0 * y0)) * 0.33333333));
 }
 
 fn random_in_unit_sphere(seed: ptr<function, u32>) -> vec3<f32> {
@@ -250,11 +239,7 @@ fn per_pixel(index: u32, random_index: u32) -> vec4<f32> {
 
         if is_glass{
 
-            var refraction_index: f32 = current_material.refraction_index;
-
-            if hit_payload.front_face{
-                refraction_index = 1.0 /refraction_index;
-            }
+            let refraction_index: f32 = select(current_material.refraction_index, 1.0 / current_material.refraction_index, hit_payload.front_face);
 
             let cos_theta: f32 = min(dot(-ray.direction, hit_payload.hitside_normal), 1.0);
 
@@ -286,20 +271,15 @@ fn per_pixel(index: u32, random_index: u32) -> vec4<f32> {
                 light_contribution *= current_color; 
             }
 
-        }else{
+        }else {
 
-            let is_specular_bounce: bool = current_material.specular > 0.0 && current_material.specular > random(&seed);
+            let opaque_is_specular: bool = current_material.specular > 0.0 && current_material.specular > random(&seed);
 
-            if is_specular_bounce{
-                ray.direction = lerp(specular_direction, diffuse_direction, current_material.specular_scatter);
-
-            }else{
-                ray.direction = lerp(specular_direction, diffuse_direction, current_material.roughness);
-                light_contribution *= current_color;
-            }
+            let scatter_t: f32 = select(current_material.roughness, current_material.specular_scatter, opaque_is_specular);
+            ray.direction = lerp(specular_direction, diffuse_direction, scatter_t);
+            light_contribution *= select(current_color, vec4<f32>(1.0), opaque_is_specular);
 
             ray.origin = hit_payload.world_position + hit_payload.hitside_normal * 0.0001;
-
         }
 
         if (light_contribution.r < 0.005 && light_contribution.g < 0.005 && light_contribution.b < 0.005) {
@@ -366,6 +346,8 @@ fn check_spheres(ray: Ray) -> HitPayload{
     let dir: vec3<f32> = ray.direction;
     let orig: vec3<f32> = ray.origin;
 
+    var return_val = miss();
+
     // 4 used a a TEMPORARY sphere count, count should be passed in the params buffer
     let sphere_count: i32 = i32(params.sphere_count);
     for (var sphere_index: i32 = 0; sphere_index < sphere_count; sphere_index = sphere_index + 1) {
@@ -395,11 +377,11 @@ fn check_spheres(ray: Ray) -> HitPayload{
         
     }
 
-    if closest_sphere_index < 0 {
-        return miss();
-    } else{
-        return sphere_hit(ray, closest_distance, u32(closest_sphere_index));
+    if closest_sphere_index >= 0 {
+        return_val = sphere_hit(ray, closest_distance, u32(closest_sphere_index));
     }
+
+    return return_val;
 
 }
 
@@ -412,7 +394,7 @@ fn ray_in_bounds(ray: Ray, min_bounds: vec3<f32>, max_bounds: vec3<f32>, t_max: 
     let far_t: vec3<f32> = max(t0, t1);
     let near: f32 = max(max(near_t.x, near_t.y), near_t.z);
     let far: f32 = min(min(far_t.x, far_t.y), far_t.z);
-    return far >= 0.0 && near <= min(far, t_max);
+    return  0.0 <= far  && near <= min(far, t_max);
 }
 fn check_triangles(ray: Ray, t_max: f32) -> HitPayload{
 
@@ -463,15 +445,15 @@ fn check_triangles(ray: Ray, t_max: f32) -> HitPayload{
 
                 // calculate distance and intersection
 
-                let v: f32 = -dot(tri.edge_ab, dao) * inv_det;
-
-                if v < 0.0 {
-                    continue;
-                }
-
                 let u: f32 = dot(tri.edge_ac, dao) * inv_det;
 
                 if u < 0.0 {
+                    continue;
+                }
+
+                let v: f32 = -dot(tri.edge_ab, dao) * inv_det;
+
+                if v < 0.0 {
                     continue;
                 }
                 
@@ -538,11 +520,9 @@ fn sphere_hit(ray: Ray, hit_distance: f32, object_index: u32) -> HitPayload{
 
     let front_face = dot(ray.direction, outward_normal) < 0;
 
-    var hitside_normal: vec3<f32>;
+    var hitside_normal: vec3<f32> = outward_normal;
 
-    if front_face{
-        hitside_normal = outward_normal;
-    }else{
+    if !front_face{
         hitside_normal = -outward_normal;
     }
 
@@ -599,12 +579,7 @@ fn random(seed: ptr<function, u32>) -> f32 {
 }
 
 
-fn random_scaler(seed: ptr<function, u32>) -> vec3<f32>{
+fn random_scaler(seed: ptr<function, u32>) -> vec3<f32> {
     // random vec3 scaler from -1 to 1
-    var scaler = vec3<f32>(0.0);
-    scaler.x = random(seed);
-    scaler.y = random(seed);
-    scaler.z = random(seed);
-
-    return scaler * 2.0 - 1.0;
+    return vec3<f32>(random(seed), random(seed), random(seed)) * 2.0 - 1.0;
 }
