@@ -146,10 +146,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let accumulating = params.accumulate == 1u; 
 
     var iters = select(1u, params.compute_per_frame, accumulating);
-    
+
+    let acc_bits: vec4<u32> = bitcast<vec4<u32>>(pixel_color);
+    let acc_seed: u32 = acc_bits.x ^ acc_bits.y ^ acc_bits.z;
+    var seed: u32 = pcg_hash(acc_seed ^ (index * 0x139021A3u) ^ (random_index * 0x9E3779B9u));
 
     for (var i: u32 = 0u; i < iters; i = i + 1) {
-        pixel_color += per_pixel(index, random_index);
+        pixel_color += per_pixel(index, &seed);
         random_index = random_index + 1;
     }
     
@@ -184,7 +187,7 @@ fn random_in_unit_sphere(seed: ptr<function, u32>) -> vec3<f32> {
 }
 
 
-fn per_pixel(index: u32, random_index: u32) -> vec4<f32> {
+fn per_pixel(index: u32, seed: ptr<function, u32>) -> vec4<f32> {
 
     var ray = Ray( 
         ray_camera.origin,
@@ -193,9 +196,7 @@ fn per_pixel(index: u32, random_index: u32) -> vec4<f32> {
         vec3<f32>(0.0),
     );
 
-    var seed: u32 = pcg_hash(pcg_hash(index ^ (random_index * 0x9E3779B9u)));
-
-    ray.direction += random_scaler(&seed) * 0.0005;
+    ray.direction += random_scaler(seed) * 0.0005;
     
     var light_contribution = vec4<f32>(1.0);
     var light = vec4<f32>(0.0);
@@ -226,7 +227,7 @@ fn per_pixel(index: u32, random_index: u32) -> vec4<f32> {
         let material_index: u32 = hit_payload.material_index;
         let current_material: SceneMaterial = material_array[material_index];
 
-        let diffuse_direction: vec3<f32> = normalize(hit_payload.hitside_normal + random_in_unit_sphere(&seed));
+        let diffuse_direction: vec3<f32> = normalize(hit_payload.hitside_normal + random_in_unit_sphere(seed));
         let specular_direction: vec3<f32> = reflect(ray.direction, hit_payload.hitside_normal);
    
         let current_color: vec4<f32> = sample_texture(current_material.texture_index, hit_payload.texture_point, texture_size);
@@ -235,7 +236,7 @@ fn per_pixel(index: u32, random_index: u32) -> vec4<f32> {
         light += emitted_light * light_contribution;
 
         // short-circuit: non-glass materials skip a pcg_hash entirely
-        let is_glass: bool = current_material.glass > 0.0 && current_material.glass > random(&seed);
+        let is_glass: bool = current_material.glass > 0.0 && current_material.glass > random(seed);
 
         if is_glass{
 
@@ -249,7 +250,7 @@ fn per_pixel(index: u32, random_index: u32) -> vec4<f32> {
 
             let specular_pct: f32 = specular_percentage(cos_theta, refraction_index);
 
-            let is_specular: bool = (current_material.specular * specular_pct) > random(&seed);
+            let is_specular: bool = (current_material.specular * specular_pct) > random(seed);
 
             if reflects || is_specular {
                 // specular reflection, bounces off the glass
@@ -273,7 +274,7 @@ fn per_pixel(index: u32, random_index: u32) -> vec4<f32> {
 
         }else {
 
-            let opaque_is_specular: bool = current_material.specular > 0.0 && current_material.specular > random(&seed);
+            let opaque_is_specular: bool = current_material.specular > 0.0 && current_material.specular > random(seed);
 
             let scatter_t: f32 = select(current_material.roughness, current_material.specular_scatter, opaque_is_specular);
             ray.direction = lerp(specular_direction, diffuse_direction, scatter_t);
