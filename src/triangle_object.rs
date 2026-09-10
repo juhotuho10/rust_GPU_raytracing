@@ -6,7 +6,7 @@ use std::io::BufReader;
 use std::f32::consts::PI;
 
 pub struct ObjectCreation {
-    pub file_path: String,
+    pub file_path: &'static str,
     pub scale: f32,
     pub coordinates: Vec3A,
     pub rotation: Vec3A,
@@ -20,7 +20,7 @@ pub fn load_stl_files(object_data_vec: &[ObjectCreation]) -> Vec<SceneObject> {
 
     for obj_data in object_data_vec {
         let mut new_obj = SceneObject::new(
-            &obj_data.file_path,
+            obj_data.file_path,
             obj_data.scale,
             obj_data.coordinates,
             obj_data.rotation,
