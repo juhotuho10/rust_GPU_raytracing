@@ -251,6 +251,16 @@ impl App {
         let Some(gpu) = self.gpu.as_mut() else {
             return;
         };
+        // get frame before computation because of WGPU performance regression
+        // issue: https://github.com/gfx-rs/wgpu/issues/9559
+        let frame = self
+            .frame_timer
+            .ready()
+            .then(|| gpu.surface.get_current_texture())
+            .and_then(|tex| match tex {
+                wgpu::CurrentSurfaceTexture::Success(frame) => Some(frame),
+                _ => None,
+            });
 
         if self.compute_timer.ready() {
             self.compute_counter += COMPUTATION_PER_FRAME;
@@ -258,9 +268,10 @@ impl App {
                 .compute_frame(&gpu.compute_pipeline, &gpu.compute_bind_group);
         }
 
-        if !self.frame_timer.ready() {
+        let Some(frame) = frame else {
+            // frame_time not ready or failed to successfully get frame
             return;
-        }
+        };
 
         if self.movement_mode {
             let _ = gpu.window.set_cursor_position(PhysicalPosition::new(
@@ -276,10 +287,6 @@ impl App {
                     label: Some("Encoder"),
                 });
 
-        let wgpu::CurrentSurfaceTexture::Success(frame) = gpu.surface.get_current_texture() else {
-            // failed to get the frame, returning without a render
-            return;
-        };
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
