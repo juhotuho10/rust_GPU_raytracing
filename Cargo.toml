@@ -7,16 +7,16 @@ version = "0.1.0"
 
 [dependencies]
 bytemuck = { version = "1.25.2", default-features = false, features = [] }
-egui = "0.32.3"
-egui-wgpu = "0.32.3"
-egui-winit = "0.32.3"
+egui = "0.36.2"
+egui-wgpu = "0.36.2"
+egui-winit = "0.36.2"
 env_logger = "0.11.11"
 glam = { version = "0.33.6", default-features = false, features = ["std"] }
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 pollster = { version = "1.0.1", default-features = false }
 rayon = { version = "1.12.0", default-features = false }
 stl_io = { version = "0.11.0", default-features = false }
-wgpu = { version = "25.0.2", default-features = false, features = ["wgsl",  "vulkan"] }
+wgpu = { version = "30.0.1", default-features = false, features = ["wgsl",  "vulkan"] }
 winit = "0.30"
 
 
